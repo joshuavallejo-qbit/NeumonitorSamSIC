@@ -6,8 +6,8 @@ from tensorflow.keras import layers, models
 # CONFIGURACIÓN BÁSICA
 # Ajusta esta ruta a donde tengas tu carpeta en la laptop
 # Ejemplo: "C:/Users/TuUsuario/Datasets/ChestXRay/train"
-data_dir = r'C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/train'
-
+#data_dir = r'C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/train'
+data_dir = r'./chest_xray/train'
 batch_size = 32      # Cantidad de imágenes a procesar por lote
 img_height = 180     # Redimensionaremos todas las imágenes a este tamaño
 img_width = 180
@@ -120,4 +120,5 @@ plt.show()
 
 # Guardamos el modelo en formato Keras nativo
 model.save('modelo_neumonia.keras')
+
 print("¡Modelo guardado exitosamente como 'modelo_neumonia.keras'!")
