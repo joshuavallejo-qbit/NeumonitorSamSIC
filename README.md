@@ -1,5 +1,5 @@
 # Neumonitor -- Sistema Web de Detección Automática de Neumonía mediante IA
-Equipo SAM - Samsung Innovation Campus
+Equipo NeumoScanners - Samsung Innovation Campus
 ##  Cómo usar este proyecto en tu computadora local
 
 Para ejecutar este proyecto en tu entorno local con **Visual Studio
