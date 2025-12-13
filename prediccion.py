@@ -3,14 +3,15 @@ import numpy as np
 
 # 1. Cargar el modelo que acabamos de entrenar
 print("Cargando el modelo...")
-model = tf.keras.models.load_model('modelo_neumonia.keras')
+model = tf.keras.models.load_model('modelo_neumonia_MobileNet.keras')
 
 # 2. Cargar una imagen para probar
 # BUSCA UNA IMAGEN EN LA CARPETA 'test' Y PEGA SU RUTA AQUÍ:
-img_path = r"C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/test/NORMAL/IM-0030-0001.jpeg" 
-
-img_height = 180
-img_width = 180
+# img_path = r"C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/test/NORMAL/IM-0030-0001.jpeg" 
+# Ruta relativa
+img_path = r"/chest_xray/test/NORMAL/IM-0030-0001.jpeg" 
+img_height = 224
+img_width = 224
 
 # Preprocesamos la imagen igual que en el entrenamiento
 img = tf.keras.utils.load_img(

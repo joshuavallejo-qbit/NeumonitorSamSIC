@@ -25,7 +25,7 @@ radiografías de tórax y detectar signos de neumonía.
 @st.cache_resource
 def load_model():
     # Asegúrate de que el nombre del archivo coincida exactamente
-    model = tf.keras.models.load_model('modelo_neumonia.keras')
+    model = tf.keras.models.load_model('modelo_neumonia_MobileNet.keras')
     return model
 
 # Cargamos el modelo y mostramos un mensaje cuando esté listo
@@ -41,14 +41,14 @@ uploaded_file = st.file_uploader("Elige una radiografía (formato JPG o PNG)..."
 if uploaded_file is not None:
     # 1. Mostrar la imagen subida
     image = Image.open(uploaded_file)
-    st.image(image, caption='Radiografía cargada', use_column_width=True)
+    st.image(image, caption='Radiografía cargada', width=600)
     
     st.write("Analizando imagen...")
 
     # 2. Preprocesar la imagen para la IA
     # IMPORTANTE: Debe ser del mismo tamaño que usamos al entrenar (180x180)
-    img_height = 180
-    img_width = 180
+    img_height = 224
+    img_width = 224
     
     # Convertir a RGB por si acaso es una imagen en escala de grises pura
     image = ImageOps.fit(image, (img_width, img_height), Image.Resampling.LANCZOS)

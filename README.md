@@ -3,7 +3,7 @@ Equipo SAM - Samsung Innovation Campus
 ##  Cómo usar este proyecto en tu computadora local
 
 Para ejecutar este proyecto en tu entorno local con **Visual Studio
-Code**, sigue estos pasos:
+Code** clonar este repositorio, sigue estos pasos:
 
 ### 1. Instalar las dependencias necesarias
 
@@ -32,9 +32,13 @@ streamlit run app.py
 
 Esto abrirá automáticamente la interfaz web en tu navegador.
 
-
-
-## 👥 Integrantes del equipo y roles
+### 4. Descargar el archivo dataset del Kaggle 
+https://www.kaggle.com/code/madz2000/pneumonia-detection-using-cnn-92-6-accuracy 
+Usted tendrá que descomprimir la carpeta chest_array ya que ahí están las tres carpetas necesarias para este proyecto
+![alt text](image.png)
+Se recomienda la siguiente estructura de proyecto en su visual studio code:
+![alt text](image-1.png)
+## Integrantes del equipo y roles
 
   --------
   Nombre                                                       Rol

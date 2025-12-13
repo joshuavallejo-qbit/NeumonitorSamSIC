@@ -1,124 +1,179 @@
 import matplotlib.pyplot as plt
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from tensorflow.keras.applications import MobileNetV2
+import os
 
-# CONFIGURACIÓN BÁSICA
+# ============================
+# CONFIGURACIÓN DE RUTAS
 # Ajusta esta ruta a donde tengas tu carpeta en la laptop
 # Ejemplo: "C:/Users/TuUsuario/Datasets/ChestXRay/train"
 #data_dir = r'C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/train'
-data_dir = r'./chest_xray/train'
-batch_size = 32      # Cantidad de imágenes a procesar por lote
-img_height = 180     # Redimensionaremos todas las imágenes a este tamaño
-img_width = 180
+# ============================
+train_dir = r'./chest_xray/train'
+val_dir = r'./chest_xray/val'
+test_dir = r'./chest_xray/test'
 
+batch_size = 32
+img_height = 224   # MobileNetV2 requiere 224x224
+img_width = 224
+
+# ============================
 # CARGA DEL DATASET
-# Usamos esta función que es muy eficiente para cargar desde carpetas
+# ============================
 print("Cargando set de entrenamiento...")
 train_ds = tf.keras.utils.image_dataset_from_directory(
-  data_dir,
-  validation_split=0.2, # Usamos el 20% para validar mientras entrenamos
-  subset="training",
-  seed=123,
-  image_size=(img_height, img_width),
-  batch_size=batch_size)
+    train_dir,
+    seed=123,
+    label_mode='int',
+    image_size=(img_height, img_width),
+    batch_size=batch_size,
+    shuffle=True
+)
 
 print("Cargando set de validación...")
 val_ds = tf.keras.utils.image_dataset_from_directory(
-  data_dir,
-  validation_split=0.2,
-  subset="validation",
-  seed=123,
-  image_size=(img_height, img_width),
-  batch_size=batch_size)
+    val_dir,
+    seed=123,
+    label_mode='int',
+    image_size=(img_height, img_width),
+    batch_size=batch_size,
+    shuffle=False
+)
 
-# Imprimir las clases encontradas
 class_names = train_ds.class_names
-print(f"\nClases encontradas: {class_names}")
+num_classes = len(class_names)
+print(f"Clases encontradas: {class_names}")
 
+# ============================
+# OPTIMIZACIÓN DEL PIPELINE
+# ============================
 AUTOTUNE = tf.data.AUTOTUNE
-
-# Optimización para el set de entrenamiento
 train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
-
-# Optimización para el set de validación
 val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
-print("¡Flujo de datos optimizado!")
-
-num_classes = len(class_names) # Deberían ser 2 (Normal, Pneumonia)
-
-model = models.Sequential([
-  # Capa 1: Normalización de entrada
-  layers.Rescaling(1./255, input_shape=(img_height, img_width, 3)),
-  
-  # Bloque Convolucional 1
-  layers.Conv2D(16, 3, padding='same', activation='relu'),
-  layers.MaxPooling2D(),
-  
-  # Bloque Convolucional 2
-  layers.Conv2D(32, 3, padding='same', activation='relu'),
-  layers.MaxPooling2D(),
-  
-  # Bloque Convolucional 3
-  layers.Conv2D(64, 3, padding='same', activation='relu'),
-  layers.MaxPooling2D(),
-  
-  # Clasificación (Cerebro final)
-  layers.Flatten(),
-  layers.Dense(128, activation='relu'),
-  layers.Dense(num_classes) # Salida final (2 neuronas)
+# ============================
+# DATA AUGMENTATION
+# ============================
+data_augmentation = tf.keras.Sequential([
+    layers.RandomFlip("horizontal"),
+    layers.RandomRotation(0.15),
+    layers.RandomZoom(0.15),
+    layers.RandomContrast(0.2),
+    layers.RandomBrightness(0.2)
 ])
 
-# COMPILACIÓN DEL MODELO
-# Aquí definimos qué "optimizador" usará para aprender (Adam en este caso)
-# y cómo medirá su error.
-model.compile(optimizer='adam',
-              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
-              metrics=['accuracy'])
+# ============================
+# TRANSFER LEARNING: MobileNetV2
+# ============================
+base_model = MobileNetV2(
+    input_shape=(img_height, img_width, 3),
+    include_top=False,
+    weights="imagenet"
+)
 
-# Ver resumen de la arquitectura
+base_model.trainable = False  # congelar capas
+
+# ============================
+# MODELO FINAL
+# ============================
+inputs = layers.Input(shape=(img_height, img_width, 3))
+x = data_augmentation(inputs)
+x = layers.Rescaling(1./255)(x)
+
+x = base_model(x, training=False)
+x = layers.GlobalAveragePooling2D()(x)
+x = layers.Dropout(0.3)(x)
+
+outputs = layers.Dense(num_classes, activation='softmax')(x)
+
+model = models.Model(inputs, outputs)
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0005),
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
 model.summary()
 
-epochs = 10
+# ============================
+# CALLBACKS (ANTI-SOBREAJUSTE)
+# ============================
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=4,
+        restore_best_weights=True
+    ),
+    tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        patience=2,
+        factor=0.3
+    )
+]
 
+# ============================
+# ENTRENAMIENTO
+# ============================
+epochs = 20
 print(f"Iniciando entrenamiento por {epochs} épocas...")
 
-# Guardamos la historia del entrenamiento para graficarla después
 history = model.fit(
-  train_ds,
-  validation_data=val_ds,
-  epochs=epochs
+    train_ds,
+    validation_data=val_ds,
+    epochs=epochs,
+    callbacks=callbacks
 )
 
 print("¡Entrenamiento finalizado!")
 
+# ============================
+# GRÁFICAS DE ENTRENAMIENTO
+# ============================
 acc = history.history['accuracy']
-val_acc = history.history['val_accuracy']
+val_acc = history.history.get('val_accuracy')
 
 loss = history.history['loss']
-val_loss = history.history['val_loss']
+val_loss = history.history.get('val_loss')
 
-epochs_range = range(epochs)
+epochs_range = range(len(acc))
 
 plt.figure(figsize=(12, 6))
 
-# Gráfica de Precisión (Accuracy)
 plt.subplot(1, 2, 1)
-plt.plot(epochs_range, acc, label='Entrenamiento (Train)')
-plt.plot(epochs_range, val_acc, label='Validación (Val)')
-plt.legend(loc='lower right')
+plt.plot(epochs_range, acc, label='Entrenamiento')
+plt.plot(epochs_range, val_acc, label='Validación')
+plt.legend()
 plt.title('Precisión (Accuracy)')
 
-# Gráfica de Pérdida (Loss)
 plt.subplot(1, 2, 2)
-plt.plot(epochs_range, loss, label='Entrenamiento (Train)')
-plt.plot(epochs_range, val_loss, label='Validación (Val)')
-plt.legend(loc='upper right')
+plt.plot(epochs_range, loss, label='Entrenamiento')
+plt.plot(epochs_range, val_loss, label='Validación')
+plt.legend()
 plt.title('Pérdida (Loss)')
+
 plt.show()
 
-# Guardamos el modelo en formato Keras nativo
-model.save('modelo_neumonia.keras')
+# ============================
+# GUARDAR MODELO
+# ============================
+model.save('modelo_neumonia_MobileNet.keras')
+print("¡Modelo guardado exitosamente!")
 
-print("¡Modelo guardado exitosamente como 'modelo_neumonia.keras'!")
+# ============================
+# EVALUACIÓN EN TEST SET
+# ============================
+print("\nCargando TEST SET...")
+test_ds = tf.keras.utils.image_dataset_from_directory(
+    test_dir,
+    label_mode='int',
+    image_size=(img_height, img_width),
+    batch_size=batch_size,
+    shuffle=False
+)
+
+test_loss, test_acc = model.evaluate(test_ds)
+print("\nResultados en TEST:")
+print("Test accuracy:", test_acc)
+print("Test loss:", test_loss)
