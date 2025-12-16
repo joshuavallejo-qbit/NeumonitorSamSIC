@@ -1,4 +1,4 @@
-// frontend/src/app/(protected)/layout.tsx - Versión mejorada
+// frontend/src/app/(protected)/layout.tsx
 'use client';
 
 import { ReactNode, useEffect, useState } from 'react';
@@ -98,4 +98,5 @@ export default function LayoutProtegido({ children }: { children: ReactNode }) {
       <CssBaseline />
     </Box>
   );
+
 }

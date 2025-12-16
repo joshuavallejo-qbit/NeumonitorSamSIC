@@ -1,4 +1,4 @@
-// frontend/src/app/dashboard/page.tsx - Versión corregida
+// frontend/src/app/dashboard/page.tsx - .
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -27,7 +27,6 @@ import {
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { servidorApi } from '@/lib/api';
-
 interface EstadisticasPersonales {
   totalAnalisis: number;
   normales: number;
