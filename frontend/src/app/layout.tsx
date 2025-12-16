@@ -1,7 +1,7 @@
-// frontend/src/app/layout.tsx - Versión corregida
+// frontend/src/app/layout.tsx - .
 import { ReactNode } from 'react';
 import CssBaseline from '@mui/material/CssBaseline';
-import ClienteThemeProvider from './ClienteThemeProvider';
+import ClienteThemeProvider from '@/app/ClienteThemeProvider';
 import BarraNavegacion from '@/components/interfaz/BarraNavegacion';
 export const metadata = {
   title: 'Neumonitor - Sistema de Detección de Neumonía',
