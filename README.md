@@ -37,7 +37,7 @@ https://www.kaggle.com/code/madz2000/pneumonia-detection-using-cnn-92-6-accuracy
 Usted tendrá que descomprimir la carpeta chest_array ya que ahí están las tres carpetas necesarias para este proyecto
 ![alt text](image.png)
 Se recomienda la siguiente estructura de proyecto en su visual studio code:
-![alt text](image-1.png)
+![alt text](image-2.png)
 ## Integrantes del equipo y roles
 
   --------
