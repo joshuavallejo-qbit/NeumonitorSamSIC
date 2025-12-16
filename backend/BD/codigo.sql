@@ -77,4 +77,9 @@ CREATE TRIGGER update_persona_updated_at
 CREATE INDEX IF NOT EXISTS idx_persona_email ON persona(email);
 CREATE INDEX IF NOT EXISTS idx_analisis_persona_id ON analisis_radiografias(persona_id);
 CREATE INDEX IF NOT EXISTS idx_analisis_fecha ON analisis_radiografias(fecha DESC);
+-- En la sección de políticas del bucket
+CREATE POLICY "Permitir subida de archivos"
+ON storage.objects FOR INSERT
+TO authenticated
+WITH CHECK (bucket_id = 'radiografias');
 
