@@ -95,14 +95,14 @@ Se recomienda la siguiente estructura de proyecto en su visual studio code:
 
 
 
-## Nombre de la prueba
+## Nombre del sistema
 
 **Neumonitor -- Sistema web de detección automática de neumonía mediante
 inteligencia artificial**
 
 
 
-## Descripción de la prueba
+## Descripción del sistema
 
 ### Prototipo
 
@@ -144,4 +144,57 @@ imagen y devuelve:
 Esta herramienta sirve como apoyo, no como reemplazo del criterio
 médico.
 
+## Cómo usar este proyecto en tu computadora local
 
+Para ejecutar este proyecto en tu entorno local con **Visual Studio Code**, clona este repositorio y sigue estos pasos:
+
+---
+
+## 1. Variables de entorno
+
+### Backend (`backend/.env`):
+
+```env
+FRONTEND_URL=http://localhost:3000
+BACKEND_URL=http://localhost:8000
+PORT=8000
+SUPABASE_URL="tu_clave_aqui"
+SUPABASE_ANON_KEY="tu_clave_aqui"
+SUPABASE_SERVICE_ROLE_KEY="tu_clave_aqui"
+NODE_ENV=development
+
+```
+### Frontend (`frontend/.env.local`):
+
+```env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET="tu_clave_aqui"
+```
+### 2. Backend
+
+Instalar dependencias:
+``` bash
+cd backend
+pip install fastapi uvicorn tensorflow pillow python-multipart python-dotenv supabase email-validator
+```
+Iniciar el backend:
+``` bash
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+``` 
+Nota: Para evitar errores con importaciones relativas en controladores y middleware, ejecutar desde la raíz del proyecto usando backend.app:app como se muestra arriba.
+### 3. Frontend
+
+Instalar dependencias:
+
+cd frontend
+``` bash
+npm init -y
+npm install --save-dev @types/node @types/react @types/react-dom @types/next
+npm install react react-dom next @mui/material @mui/icons-material @emotion/react @emotion/styled zustand axios react-hook-form next-auth
+npm install
+```
+Iniciar el frontend:
+``` bash
+npm run dev
+```
