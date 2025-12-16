@@ -16,9 +16,9 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "baseUrl": "./src",        // 🔹 importante
+    "baseUrl": "./src",       
     "paths": {
-      "@/*": ["*"]             // 🔹 apunta a ./src/*
+      "@/*": ["*"]             
     },
     "plugins": [
       { "name": "next" }
