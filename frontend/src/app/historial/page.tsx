@@ -1,4 +1,4 @@
-// frontend/src/app/historial/page.tsx - Corregido
+// frontend/src/app/historial/page.tsx - .
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -45,7 +45,7 @@ export default function PaginaHistorial() {
       
       const respuesta = await servidorApi.obtenerHistorial();
       
-      // CORRECCIÓN: Usar 'datos' en lugar de 'data'
+      // .: Usar 'datos' en lugar de 'data'
       if (respuesta.exito && respuesta.datos) {
         // El backend puede devolver diferentes estructuras
         const datosBackend = respuesta.datos;
