@@ -10,6 +10,7 @@ import os
 from typing import Optional
 import uuid
 from datetime import datetime
+from fastapi.responses import JSONResponse
 
 # Importar módulos
 from config.conexion import get_supabase, verificar_conexion, verificar_storage, get_supabase_admin
@@ -18,17 +19,42 @@ from controladores import authController, personaController, analisisController
 app = FastAPI(title="API de Detección de Neumonía")
 
 # Configurar CORS
+origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://neumonitor2.vercel.app",  #  Vercel
+    "https://neumonitor2.onrender.com", # Render
+    "http://neumonitor2.onrender.com",  # También versión HTTP por si acaso
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 # Importar middleware después de crear la app
 from middleware.auth import AuthMiddleware
+@app.middleware("http")
+async def add_cors_headers(request, call_next):
+    response = await call_next(request)
+    
+    # Agregar headers CORS
+    response.headers["Access-Control-Allow-Origin"] = "https://neumonitor2.vercel.app"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+    
+    return response
 
+# Agrega este endpoint específico para OPTIONS
+@app.options("/{path:path}")
+async def options_handler():
+    return {"message": "OK"}
 # Crear un middleware HTTP personalizado que SI funcione
 @app.middleware("http")
 async def middleware_global(request: Request, call_next):
@@ -130,33 +156,27 @@ async def predecir_neumonia_publico(
     if modelo is None:
         raise HTTPException(status_code=500, detail="Modelo no disponible")
     
-    # Validar tipo de archivo
     if imagen.content_type not in ["image/jpeg", "image/png", "image/jpg"]:
         raise HTTPException(status_code=400, detail=f"Formato de imagen no soportado: {imagen.content_type}")
     
     try:
         # Leer imagen
         contenido = await imagen.read()
-        
         imagen_pil = Image.open(io.BytesIO(contenido))
         
-        # Preprocesar imagen
+        # Preprocesar
         tamano = (224, 224)
         imagen_pil = imagen_pil.resize(tamano, Image.Resampling.LANCZOS)
-        
         if imagen_pil.mode != 'RGB':
             imagen_pil = imagen_pil.convert('RGB')
         
-        # Convertir a array
+        # Convertir a array y predecir
         array_imagen = keras.preprocessing.image.img_to_array(imagen_pil)
         array_imagen = np.expand_dims(array_imagen, axis=0)
-        
-        # Realizar predicción
         predicciones = modelo.predict(array_imagen, verbose=0)
         puntuacion = tf.nn.softmax(predicciones[0])
         puntuacion_numpy = puntuacion.numpy()
         
-        # Resultados
         nombres_clases = ['NORMAL', 'PNEUMONIA']
         clase_index = int(np.argmax(puntuacion_numpy))
         clase_predicha = nombres_clases[clase_index]
@@ -173,31 +193,22 @@ async def predecir_neumonia_publico(
             "autenticado": False
         }
         
-        # Verificar si hay autenticación
+        # Guardar análisis si hay autenticación
         if hasattr(request.state, 'persona') and request.state.persona:
             persona_id = request.state.persona.get("id")
             resultado["autenticado"] = True
             
-            # Guardar análisis en base de datos
             try:
                 supabase = get_supabase_admin()
-                
-                # Generar nombre único para la imagen
                 file_extension = imagen.filename.split('.')[-1] if '.' in imagen.filename else 'jpg'
                 unique_filename = f"{persona_id}/{uuid.uuid4()}.{file_extension}"
                 
-                # Subir imagen a Supabase Storage
                 upload_response = supabase.storage.from_("radiografias").upload(
-                    unique_filename,
-                    contenido,
-                    {"content-type": imagen.content_type}
+                    unique_filename, contenido, {"content-type": imagen.content_type}
                 )
                 
                 if not hasattr(upload_response, 'error') or not upload_response.error:
-                    # Obtener URL pública
                     url_response = supabase.storage.from_("radiografias").get_public_url(unique_filename)
-                    
-                    # Guardar análisis en base de datos
                     analisis_data = {
                         "id": str(uuid.uuid4()),
                         "persona_id": persona_id,
@@ -208,23 +219,24 @@ async def predecir_neumonia_publico(
                         "fecha": datetime.now().isoformat(),
                         "probabilidades": resultado["probabilidades"]
                     }
-                    
-                    # Insertar en tabla de análisis
                     supabase.table("analisis_radiografias").insert(analisis_data).execute()
-                    
                     resultado["mensaje"] = "Análisis guardado en tu historial"
                     resultado["analisis_id"] = analisis_data["id"]
             except Exception as save_error:
                 print(f"Error guardando análisis autenticado: {save_error}")
         
-        return resultado
+        # Crear respuesta JSON y agregar headers CORS manualmente
+        response = JSONResponse(content=resultado)
+        response.headers["Access-Control-Allow-Origin"] = "https://neumonitor2.vercel.app"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        
+        return response
         
     except Exception as e:
         import traceback
-        error_trace = traceback.format_exc()
         print(f"Error procesando imagen: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error procesando imagen: {str(e)}")
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
