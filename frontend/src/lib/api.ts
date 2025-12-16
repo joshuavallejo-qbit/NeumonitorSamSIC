@@ -1,12 +1,15 @@
-// frontend/src/lib/api.ts - Corregido
+// frontend/src/lib/api.ts - .
 import axios from 'axios';
 import { RespuestaApi } from '@/types/tipos';
 
 const clienteApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://neumonitor2.onrender.com',
   timeout: 30000,
+  withCredentials: true,  // Permite enviar cookies/tokens
 });
-
+// Configuración específica para el interceptor
+clienteApi.defaults.headers.common['Content-Type'] = 'application/json';
+clienteApi.defaults.headers.common['Accept'] = 'application/json';
 // Interceptor para agregar token a las solicitudes
 clienteApi.interceptors.request.use(
   (config) => {
