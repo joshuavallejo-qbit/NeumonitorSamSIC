@@ -1,3 +1,4 @@
+//tsconfig.json
 {
   "compilerOptions": {
     "target": "ES2017",
@@ -16,9 +17,9 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "baseUrl": "./src",       
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["*"]             
+      "@/*": ["src/*"]
     },
     "plugins": [
       { "name": "next" }
