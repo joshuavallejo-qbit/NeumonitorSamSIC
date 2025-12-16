@@ -1,0 +1,6 @@
+﻿Fecha;Diagnóstico;Confianza (%);Probabilidad Normal (%);Probabilidad Neumonía (%);Imagen (URL);Comentarios
+16/12/2025, 10:52;NORMAL;69.72;69.7;30.3;https://ezqszozrtecuksfjaakq.supabase.co/storage/v1/object/public/radiografias/698a7090-0385-4f2c-8592-72abbfb75388/3cc15691-ec10-430c-ba60-c217c20ef0d6.jpeg;Análisis desde endpoint
+16/12/2025, 10:49;NORMAL;69.72;69.7;30.3;https://ezqszozrtecuksfjaakq.supabase.co/storage/v1/object/public/radiografias/698a7090-0385-4f2c-8592-72abbfb75388/d16e4cbb-2e4d-4627-9bb8-da8bb8a7c348.jpeg;Análisis desde endpoint
+16/12/2025, 10:48;PNEUMONIA;72.80;27.2;72.8;https://ezqszozrtecuksfjaakq.supabase.co/storage/v1/object/public/radiografias/698a7090-0385-4f2c-8592-72abbfb75388/67d0ca0d-ab78-4024-8b50-015937ceeb52.jpeg;Análisis desde endpoint
+16/12/2025, 10:19;PNEUMONIA;70.43;29.6;70.4;https://ezqszozrtecuksfjaakq.supabase.co/storage/v1/object/public/radiografias/698a7090-0385-4f2c-8592-72abbfb75388/e357cfa0-420b-43dd-9558-c1e6fd89b268.jpeg;Análisis desde endpoint
+16/12/2025, 06:01;PNEUMONIA;65.65;34.4;65.6;https://ezqszozrtecuksfjaakq.supabase.co/storage/v1/object/public/radiografias/698a7090-0385-4f2c-8592-72abbfb75388/d2001136-b1e5-43c6-932d-8a2d1cf29a5a.jpeg;Análisis desde endpoint público
