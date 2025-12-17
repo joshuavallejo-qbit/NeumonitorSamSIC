@@ -1,42 +1,51 @@
 // frontend/src/hooks/useAuth.ts
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { servidorApi } from '@/lib/api';
-
+import { config } from '@/lib/config';
 export const useAuth = () => {
-  const [usuario, setUsuario] = useState<any>(null);
-  const [cargando, setCargando] = useState(true);
   const [estaAutenticado, setEstaAutenticado] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [usuario, setUsuario] = useState<any>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    const personaData = localStorage.getItem('persona_data');
+    const verificarAutenticacion = async () => {
+      setCargando(true);
+      
+      // Primero verificar token local
+      const token = localStorage.getItem(config.auth.tokenKey);
+      const usuarioData = localStorage.getItem(config.auth.userKey);
+      
+      if (token && usuarioData) {
+        try {
+          // Intentar verificar con el servidor
+          const respuesta = await servidorApi.verificarSesion();
+          
+          if (respuesta.exito) {
+            setEstaAutenticado(true);
+            setUsuario(JSON.parse(usuarioData));
+          } else {
+            // Token inválido, limpiar
+            localStorage.removeItem(config.auth.tokenKey);
+            localStorage.removeItem(config.auth.userKey);
+            setEstaAutenticado(false);
+            setUsuario(null);
+          }
+        } catch (error) {
+          console.warn('Error verificando sesión:', error);
+          // Si hay error de conexión, mantener sesión local
+          setEstaAutenticado(true);
+          setUsuario(JSON.parse(usuarioData));
+        }
+      } else {
+        setEstaAutenticado(false);
+        setUsuario(null);
+      }
+      
+      setCargando(false);
+    };
 
-    if (token && personaData) {
-      setUsuario(JSON.parse(personaData));
-      setEstaAutenticado(true);
-    } else {
-      setUsuario(null);
-      setEstaAutenticado(false);
-    }
-    setCargando(false);
+    verificarAutenticacion();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const respuesta = await servidorApi.login(email, password);
-    if (respuesta.exito) {
-      setUsuario(JSON.parse(localStorage.getItem('persona_data')!));
-      setEstaAutenticado(true);
-      return { exito: true };
-    }
-    return { exito: false, error: respuesta.mensaje };
-  };
-
-  const logout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('persona_data');
-    setUsuario(null);
-    setEstaAutenticado(false);
-  };
-
-  return { usuario, cargando, estaAutenticado, login, logout };
+  return { estaAutenticado, cargando, usuario };
 };
