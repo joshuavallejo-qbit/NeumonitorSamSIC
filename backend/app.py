@@ -23,12 +23,10 @@ from controladores import authController, personaController, analisisController
 
 
 # APP
-
 app = FastAPI(title="API de Detección de Neumonía")
 
 
 # CORS
-
 def get_origins():
     env = os.getenv("NODE_ENV", "development")
     if env == "production":
@@ -54,7 +52,6 @@ app.add_middleware(
 
 
 # MIDDLEWARE GLOBAL
-
 @app.middleware("http")
 async def middleware_global(request: Request, call_next):
     print(f"\n{'='*50}")
@@ -105,16 +102,12 @@ async def options_handler():
 
 
 # ROUTERS
-
 app.include_router(authController.router)
 app.include_router(personaController.router)
 app.include_router(analisisController.router)
 
 
-# CARGA MODELO IA
-
 # ENDPOINTS PÚBLICOS
-
 @app.get("/")
 async def raiz():
     return {
@@ -138,10 +131,13 @@ async def verificar_salud():
     }
 
 
-# NUEVO: VULNERABILIDAD
-
+# ENDPOINT: VULNERABILIDAD (Solo información del perfil de salud)
 @app.get("/vulnerabilidad/{persona_id}")
 async def obtener_vulnerabilidad(persona_id: str):
+    """
+    Obtiene SOLO la información de vulnerabilidad del perfil de salud.
+    NO incluye diagnósticos de radiografías.
+    """
     try:
         supabase = get_supabase()
         response = (
@@ -171,12 +167,18 @@ async def obtener_vulnerabilidad(persona_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# PREDICCIÓN IA
+# PREDICCIÓN IA - SEPARACIÓN CLARA DE DIAGNÓSTICO Y VULNERABILIDAD
 @app.post("/predecir")
 async def predecir_neumonia_publico(
     imagen: UploadFile = File(...),
     request: Request = None
 ):
+    """
+    Endpoint de predicción que:
+    1. SIEMPRE realiza el diagnóstico de la radiografía (NORMAL/PNEUMONIA)
+    2. Si el usuario está autenticado, ADICIONALMENTE incluye su perfil de vulnerabilidad
+    3. La vulnerabilidad NO afecta el diagnóstico médico
+    """
     if modelo is None:
         raise HTTPException(status_code=500, detail="Modelo no disponible")
 
@@ -184,6 +186,9 @@ async def predecir_neumonia_publico(
         raise HTTPException(status_code=400, detail="Formato no soportado")
 
     try:
+        
+        # PASO 1: DIAGNÓSTICO DE LA RADIOGRAFÍA (INDEPENDIENTE)
+        
         contenido = await imagen.read()
         img = Image.open(io.BytesIO(contenido)).convert("RGB").resize((224, 224))
         arr = keras.preprocessing.image.img_to_array(img)
@@ -195,6 +200,7 @@ async def predecir_neumonia_publico(
         clases = ["NORMAL", "PNEUMONIA"]
         idx = int(np.argmax(prob))
 
+        # Resultado base del diagnóstico (sin vulnerabilidad)
         resultado = {
             "diagnostico": clases[idx],
             "confianza": round(float(prob[idx] * 100), 2),
@@ -203,10 +209,12 @@ async def predecir_neumonia_publico(
                 "neumonia": float(prob[1]),
             },
             "autenticado": False,
-            "explicacion": "Análisis estándar sin perfil de salud"
+            "explicacion": "Análisis estándar del modelo de IA"
         }
 
-        # Guardar si hay sesión
+        
+        # PASO 2: SI HAY SESIÓN, AGREGAR INFORMACIÓN DE VULNERABILIDAD
+        
         if hasattr(request.state, 'persona') and request.state.persona:
             supabase = get_supabase_admin()
             persona_id = request.state.persona["id"]
@@ -221,53 +229,74 @@ async def predecir_neumonia_publico(
 
             url = supabase.storage.from_("radiografias").get_public_url(nombre_archivo)
 
-            # Obtener información de vulnerabilidad
+            
+            # OBTENER INFORMACIÓN DE VULNERABILIDAD (SEPARADA)
+            
             from controladores.analisisController import obtener_informacion_vulnerabilidad
             vulnerabilidad_info = await obtener_informacion_vulnerabilidad(persona_id, supabase)
             
-            # Generar explicación personalizada
+            
+            # GENERAR EXPLICACIÓN QUE COMBINE AMBOS (PERO NO LOS MEZCLE)
+            
             from controladores.analisisController import generar_explicacion_analisis
             explicacion_info = generar_explicacion_analisis(
-                resultado["diagnostico"],
+                resultado["diagnostico"],  # Diagnóstico de IA
                 resultado["confianza"],
-                vulnerabilidad_info
+                vulnerabilidad_info  # Info de vulnerabilidad del perfil
             )
             
-            # Insertar análisis con vulnerabilidad
+            
+            # GUARDAR ANÁLISIS CON AMBAS INFORMACIONES SEPARADAS
+            
             analisis_data = {
                 "id": str(uuid.uuid4()),
                 "persona_id": persona_id,
                 "imagen_url": url,
+                # Diagnóstico de la radiografía
                 "diagnostico": resultado["diagnostico"],
                 "confianza": resultado["confianza"],
                 "probabilidades": resultado["probabilidades"],
                 "fecha": datetime.now().isoformat(),
+                # Información de vulnerabilidad del paciente (SEPARADA)
                 "nivel_vulnerabilidad_paciente": vulnerabilidad_info["nivel_vulnerabilidad"],
                 "prioridad_atencion_sugerida": vulnerabilidad_info["prioridad_atencion"],
                 "explicacion_vulnerabilidad": vulnerabilidad_info["explicacion"],
+                # Análisis combinado (contexto)
                 "detalles_analisis": explicacion_info["explicacion_detallada"]
             }
 
             supabase.table("analisis_radiografias").insert(analisis_data).execute()
 
+            
+            # RESPUESTA PARA USUARIO AUTENTICADO
+            
             resultado["autenticado"] = True
             resultado["mensaje"] = "Análisis guardado en historial"
             resultado["explicacion"] = explicacion_info["mensaje_corto"]
+            
+            # IMPORTANTE: La vulnerabilidad es ADICIONAL, no reemplaza el diagnóstico
             resultado["vulnerabilidad"] = {
                 "nivel": vulnerabilidad_info["nivel_vulnerabilidad"],
                 "prioridad": vulnerabilidad_info["prioridad_atencion"],
                 "explicacion": vulnerabilidad_info["explicacion"]
             }
+            
+            # Incluir detalles del análisis combinado
+            resultado["data"] = {
+                "detalles_analisis": explicacion_info["explicacion_detallada"],
+                "nivel_vulnerabilidad_paciente": vulnerabilidad_info["nivel_vulnerabilidad"],
+                "prioridad_atencion_sugerida": vulnerabilidad_info["prioridad_atencion"],
+                "explicacion_vulnerabilidad": vulnerabilidad_info["explicacion"]
+            }
 
         return JSONResponse(content=resultado)
 
     except Exception as e:
+        print(f"Error en predicción: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 
 # MAIN
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

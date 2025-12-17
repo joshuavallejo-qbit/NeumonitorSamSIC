@@ -1,5 +1,7 @@
 //frontend/src/app/(protected)/analisis-personalizado/page.tsx:
+
 'use client';
+
 import { useState, useEffect, useRef } from 'react';
 import {
   Container,
@@ -410,7 +412,11 @@ setResultado(datosResultado);
                       📈 Confianza del modelo: {resultado.confianza}%
                     </Typography>
                   </Alert>
-                  
+                  <Typography variant="caption" color="text.secondary">
+                    ℹ️ La confianza indica qué tan seguro está el modelo al comparar diagnósticos posibles.
+                    Un valor menor al 80% no implica un error, sino mayor ambigüedad en la imagen.
+                  </Typography>
+
                   
                   
                   {/* Información de vulnerabilidad */}

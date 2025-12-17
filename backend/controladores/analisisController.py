@@ -1,468 +1,381 @@
 # backend/controladores/analisisController.py
-from fastapi import APIRouter, HTTPException, Request, UploadFile, File
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
-import logging
-from datetime import datetime
+
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Request
 from config.conexion import get_supabase, get_supabase_admin
+from PIL import Image
+import io
 import uuid
-import json
-import random
+from datetime import datetime
+import numpy as np
+from tensorflow import keras
+import tensorflow as tf
+from trayendo_modelo import model as modelo
 
 router = APIRouter(prefix="/analisis", tags=["Análisis"])
 
-# Modelos
-class AnalisisRequest(BaseModel):
-    comentarios: Optional[str] = None
 
-# Dependencia de autenticación
-def obtener_persona_autenticada(request: Request):
-    """Obtener persona autenticada desde request state"""
-    if not hasattr(request.state, 'persona') or not request.state.persona:
-        raise HTTPException(status_code=401, detail="No autenticado")
-    return request.state.persona
 
-# Función para obtener perfil de salud y generar explicación
-async def obtener_informacion_vulnerabilidad(persona_id: str, supabase) -> Dict[str, Any]:
-    """Obtener información de vulnerabilidad del usuario - . MEJORADA"""
+# FUNCIÓN: OBTENER INFORMACIÓN DE VULNERABILIDAD
+
+async def obtener_informacion_vulnerabilidad(persona_id: str, supabase):
+    """
+    Obtiene la información de vulnerabilidad del perfil de salud.
+    Esta información es INDEPENDIENTE del diagnóstico de la radiografía.
+    """
     try:
-        # Obtener perfil de salud
-        response = supabase.table("perfil_salud").select("*").eq("persona_id", persona_id).execute()
+        response = (
+            supabase.table("perfil_salud")
+            .select("*")
+            .eq("persona_id", persona_id)
+            .execute()
+        )
         
-        if not response.data or len(response.data) == 0:
+        if response.data and len(response.data) > 0:
+            perfil = response.data[0]
+            
             return {
-                "nivel_vulnerabilidad": "NO_DISPONIBLE",
+                "nivel_vulnerabilidad": perfil.get("nivel_vulnerabilidad", "DESCONOCIDA"),
+                "prioridad_atencion": perfil.get("prioridad_atencion", "MEDIA"),
+                "explicacion": f"Paciente con vulnerabilidad {perfil.get('nivel_vulnerabilidad', 'desconocida').lower()} según perfil de salud registrado.",
+                "tiene_perfil": True
+            }
+        else:
+            return {
+                "nivel_vulnerabilidad": "NO_REGISTRADA",
                 "prioridad_atencion": "MEDIA",
-                "explicacion": "Información de perfil de salud no disponible",
-                "tiene_perfil": False,
-                "factores_criticos": 0,
-                "motivos": []
+                "explicacion": "No se encontró perfil de salud registrado para este paciente.",
+                "tiene_perfil": False
             }
-        
-        perfil = response.data[0]
-        
-        # Obtener el cálculo de vulnerabilidad directamente desde la BD si existe
-        if perfil.get('nivel_vulnerabilidad') and perfil.get('prioridad_atencion'):
-            # Construir explicación basada en los datos del perfil
-            explicacion_parts = []
-            edad = None
-            
-            # Edad
-            if perfil.get('fecha_nacimiento'):
-                try:
-                    fecha_nac = datetime.strptime(perfil['fecha_nacimiento'], '%Y-%m-%d').date()
-                    from datetime import date
-                    hoy = date.today()
-                    edad = hoy.year - fecha_nac.year - ((hoy.month, hoy.day) < (fecha_nac.month, fecha_nac.day))
-                    explicacion_parts.append(f"Edad: {edad} años")
-                except:
-                    pass
-            
-            # Zona
-            zona_map = {
-                'urbana': 'Zona urbana (ciudad)',
-                'periurbana': 'Zona periurbana',
-                'rural': 'Zona rural',
-                'comunidad_dificil': 'Comunidad de difícil acceso'
-            }
-            if perfil.get('tipo_zona'):
-                explicacion_parts.append(f"Ubicación: {zona_map.get(perfil['tipo_zona'], perfil['tipo_zona'])}")
-            
-            # Situación económica
-            econ_map = {
-                'ingresos_limites': 'Ingresos limitados',
-                'ingresos_moderados': 'Ingresos moderados',
-                'ingresos_estables': 'Ingresos estables',
-                'prefiero_no_responder': 'Prefiere no responder'
-            }
-            if perfil.get('situacion_economica'):
-                situacion = econ_map.get(perfil['situacion_economica'], perfil['situacion_economica'])
-                explicacion_parts.append(f"Situación económica: {situacion}")
-            
-            # Acceso a salud
-            salud_map = {
-                'muy_dificil': 'Muy difícil (más de 1 hora de traslado)',
-                'dificil': 'Difícil',
-                'acceso_moderado': 'Acceso moderado',
-                'facil_acceso': 'Fácil acceso',
-                'atencion_privada': 'Atención privada frecuente'
-            }
-            if perfil.get('acceso_salud'):
-                acceso = salud_map.get(perfil['acceso_salud'], perfil['acceso_salud'])
-                explicacion_parts.append(f"Acceso a salud: {acceso}")
-            
-            # COVID
-            if perfil.get('experiencias_covid'):
-                covid_exp = perfil['experiencias_covid']
-                if isinstance(covid_exp, dict):
-                    covid_info = []
-                    if covid_exp.get('diagnosticado'):
-                        covid_info.append('Diagnosticado con COVID-19')
-                    if covid_exp.get('hospitalizado'):
-                        covid_info.append('Hospitalizado por COVID-19')
-                    if covid_exp.get('secuelas_respiratorias'):
-                        covid_info.append('Secuelas respiratorias post-COVID')
-                    if covid_exp.get('perdida_empleo'):
-                        covid_info.append('Pérdida de empleo/ingresos')
-                    if covid_info:
-                        explicacion_parts.append(f"Experiencias COVID: {', '.join(covid_info)}")
-            
-            explicacion = ". ".join(explicacion_parts)
-            
-            # Calcular factores críticos basados en los datos
-            factores_criticos = 0
-            motivos = []
-            
-            if edad and edad > 56:
-                factores_criticos += 1
-                motivos.append(f"Edad > 56 años ({edad} años)")
-            
-            if perfil.get('tipo_zona') in ['rural', 'comunidad_dificil']:
-                factores_criticos += 1
-                motivos.append(f"Zona {perfil['tipo_zona']}")
-            
-            if perfil.get('situacion_economica') == 'ingresos_limites':
-                factores_criticos += 1
-                motivos.append("Ingresos limitados")
-            
-            if covid_exp and isinstance(covid_exp, dict) and covid_exp.get('hospitalizado'):
-                factores_criticos += 1
-                motivos.append("Hospitalización por COVID-19")
-            
-            return {
-                "nivel_vulnerabilidad": perfil.get("nivel_vulnerabilidad", "BAJA"),
-                "prioridad_atencion": perfil.get("prioridad_atencion", "BAJA"),
-                "explicacion": explicacion,
-                "tiene_perfil": True,
-                "factores_criticos": factores_criticos,
-                "motivos": motivos,
-                "detalles_perfil": perfil
-            }
-    
     except Exception as e:
-        logging.error(f"Error obteniendo vulnerabilidad: {e}")
-    
-    return {
-        "nivel_vulnerabilidad": "BAJA",
-        "prioridad_atencion": "BAJA",
-        "explicacion": "Información no disponible",
-        "tiene_perfil": False,
-        "factores_criticos": 0,
-        "motivos": []
-    }
+        print(f"Error obteniendo vulnerabilidad: {e}")
+        return {
+            "nivel_vulnerabilidad": "ERROR",
+            "prioridad_atencion": "MEDIA",
+            "explicacion": "Error al obtener información de vulnerabilidad.",
+            "tiene_perfil": False
+        }
 
-# Función para generar explicación del análisis
-def generar_explicacion_analisis(diagnostico: str, confianza: float, vulnerabilidad_info: Dict[str, Any]) -> Dict[str, str]:
-    """Generar explicación detallada del análisis - . MEJORADA"""
+
+
+# FUNCIÓN: GENERAR EXPLICACIÓN DEL ANÁLISIS
+
+def generar_explicacion_analisis(diagnostico: str, confianza: float, vulnerabilidad_info: dict) -> dict:
+    """
+    Genera una explicación que COMBINA pero NO MEZCLA:
+    1. El diagnóstico médico de la radiografía (NORMAL/PNEUMONIA)
+    2. La información de vulnerabilidad del paciente (del perfil de salud)
+    
+    IMPORTANTE: El diagnóstico y la vulnerabilidad son INDEPENDIENTES.
+    """
+    
+    
+    # PARTE 1: EXPLICACIÓN DEL DIAGNÓSTICO (RADIOGRAFÍA)
     
     if diagnostico == "NORMAL":
-        explicacion_ia = f"""
-        La inteligencia artificial analizó patrones visuales en la radiografía y no detectó signos compatibles con neumonía.
+        diagnostico_explicacion = f"""
+DIAGNÓSTICO DE LA RADIOGRAFÍA: NORMAL
+- Confianza del modelo: {confianza}%
+- El modelo de IA no detectó patrones asociados con neumonía en esta radiografía.
+- Las estructuras pulmonares aparecen dentro de parámetros normales según el análisis automatizado.
+"""
+    else:  # PNEUMONIA
+        diagnostico_explicacion = f"""
+DIAGNÓSTICO DE LA RADIOGRAFÍA: NEUMONÍA DETECTADA
+- Confianza del modelo: {confianza}%
+- El modelo de IA identificó patrones consistentes con neumonía en esta radiografía.
+- Se detectaron opacidades o consolidaciones que sugieren proceso infeccioso pulmonar.
+- IMPORTANTE: Este es un análisis preliminar, se requiere confirmación médica profesional.
+"""
+    
+    
+    # PARTE 2: INFORMACIÓN DE VULNERABILIDAD (PERFIL DE SALUD)
+    
+    if vulnerabilidad_info["tiene_perfil"]:
+        nivel = vulnerabilidad_info["nivel_vulnerabilidad"]
+        prioridad = vulnerabilidad_info["prioridad_atencion"]
         
-        🔍 **Análisis realizado:**
-        • Comparación con miles de radiografías normales y patológicas
-        • Evaluación de opacidades pulmonares
-        • Análisis de simetría en campos pulmonares
-        • Detección de densidades anormales
-        
-        📊 **Resultado del análisis:**
-        • Diagnóstico: NORMAL
-        • Confianza del modelo: {confianza}%
-        • Probabilidad de normalidad: {(confianza/100):.1%}
-        
-        📋 **Contexto del paciente:**
-        {vulnerabilidad_info['explicacion']}
-        
-        ⚠️ **Nota importante:**
-        Este es un análisis preliminar realizado por IA. Siempre consulte con un médico para un diagnóstico definitivo.
-        """
-        mensaje_corto = "No se detectaron patrones compatibles con neumonía."
-        
-    else:  # NEUMONIA
-        # Determinar urgencia basada en vulnerabilidad
-        urgencia = "URGENTE" if vulnerabilidad_info['nivel_vulnerabilidad'] == "ALTA" else "PRIORITARIA"
-        
-        explicacion_ia = f"""
-        La inteligencia artificial detectó patrones compatibles con neumonía con una confianza del {confianza}%.
-        
-        🔍 **Cómo llegó la IA a esta conclusión:**
-        • Opacidades pulmonares en regiones inferiores
-        • Asimetría en campos pulmonares
-        • Densidades anormales asociadas a inflamación
-        • Comparación con miles de radiografías normales y patológicas
-        
-        📊 **Evaluación del paciente:**
-        • Diagnóstico: POSIBLE NEUMONÍA
-        • Confianza del modelo: {confianza}%
-        • Nivel de vulnerabilidad: **{vulnerabilidad_info['nivel_vulnerabilidad']}**
-        • Prioridad de atención: **{vulnerabilidad_info['prioridad_atencion']}**
-        • Factores de riesgo: {vulnerabilidad_info['factores_criticos']}
-        
-        ℹ️ **Perfil del paciente:**
-        {vulnerabilidad_info['explicacion']}
-        
-        {'🚨 ' if vulnerabilidad_info['nivel_vulnerabilidad'] == 'ALTA' else '⚠️ '}**Recomendación:**
-        Se recomienda atención médica **{urgencia}**. 
-        Consulte con un profesional médico para confirmación y tratamiento.
-        """
-        
-        if vulnerabilidad_info['nivel_vulnerabilidad'] == "ALTA":
-            mensaje_corto = "¡ATENCIÓN URGENTE! Se detectó neumonía en paciente de alta vulnerabilidad."
-        elif vulnerabilidad_info['nivel_vulnerabilidad'] == "MEDIA":
-            mensaje_corto = "Se detectó neumonía en paciente con vulnerabilidad media. Consulte pronto."
+        vulnerabilidad_explicacion = f"""
+PERFIL DE VULNERABILIDAD DEL PACIENTE: {nivel}
+- Nivel de vulnerabilidad: {nivel}
+- Prioridad de atención sugerida: {prioridad}
+- {vulnerabilidad_info["explicacion"]}
+
+Esta evaluación se basa en:
+  • Edad y condición demográfica
+  • Situación socioeconómica
+  • Acceso a servicios de salud
+  • Historial de COVID-19 y secuelas
+"""
+    else:
+        vulnerabilidad_explicacion = """
+PERFIL DE VULNERABILIDAD: NO DISPONIBLE
+- No se cuenta con información de perfil de salud registrado.
+- Se recomienda completar el perfil para una evaluación más personalizada.
+"""
+    
+    
+    # PARTE 3: RECOMENDACIÓN COMBINADA (CONTEXTO)
+    
+    if diagnostico == "NORMAL":
+        if vulnerabilidad_info.get("nivel_vulnerabilidad") == "ALTA":
+            recomendacion = """
+RECOMENDACIÓN:
+✅ La radiografía muestra patrones normales.
+⚠️ Sin embargo, dado su perfil de ALTA vulnerabilidad, se recomienda:
+  - Mantener chequeos médicos periódicos
+  - Estar atento a cualquier síntoma respiratorio
+  - Priorizar acceso a atención médica ante síntomas
+  - Seguir medidas preventivas de salud respiratoria
+"""
         else:
-            mensaje_corto = "Se detectaron signos de neumonía. Consulte con un médico."
+            recomendacion = """
+RECOMENDACIÓN:
+✅ La radiografía muestra patrones normales.
+✅ Continuar con chequeos médicos de rutina según indicación profesional.
+"""
+    else:  # PNEUMONIA
+        if vulnerabilidad_info.get("nivel_vulnerabilidad") == "ALTA":
+            recomendacion = """
+RECOMENDACIÓN URGENTE:
+🚨 NEUMONÍA DETECTADA + VULNERABILIDAD ALTA
+⚠️ Esta combinación requiere ATENCIÓN MÉDICA INMEDIATA:
+  - Acudir a urgencias o centro de salud LO ANTES POSIBLE
+  - El perfil de alta vulnerabilidad aumenta el riesgo de complicaciones
+  - NO esperar a que los síntomas empeoren
+  - Llevar esta información al médico tratante
+  
+PRIORIDAD: ALTA - ATENCIÓN URGENTE REQUERIDA
+"""
+        elif vulnerabilidad_info.get("nivel_vulnerabilidad") == "MEDIA":
+            recomendacion = """
+RECOMENDACIÓN PRIORITARIA:
+⚠️ NEUMONÍA DETECTADA + VULNERABILIDAD MEDIA
+⚠️ Se requiere ATENCIÓN MÉDICA PRONTA:
+  - Consultar con médico en las próximas 24-48 horas
+  - El perfil de vulnerabilidad media requiere seguimiento cercano
+  - Monitorear síntomas (fiebre, dificultad respiratoria, dolor)
+  - Llevar esta información al médico tratante
+  
+PRIORIDAD: MEDIA-ALTA - CONSULTA MÉDICA PRONTO
+"""
+        else:
+            recomendacion = """
+RECOMENDACIÓN:
+⚠️ NEUMONÍA DETECTADA
+⚠️ Se requiere EVALUACIÓN MÉDICA:
+  - Consultar con médico profesional
+  - Confirmar diagnóstico con estudios adicionales
+  - Iniciar tratamiento apropiado según indicación médica
+  - Llevar esta información al médico tratante
+  
+PRIORIDAD: CONSULTA MÉDICA NECESARIA
+"""
+        # EXPLICACIÓN DEL NIVEL DE CONFIANZA
+    explicacion_confianza = f"""
+    ¿QUÉ SIGNIFICA EL NIVEL DE CONFIANZA?
+    - La confianza representa el grado de seguridad del modelo al comparar las posibles clases (NORMAL vs NEUMONÍA).
+    - Un valor inferior al 80% NO significa que el diagnóstico sea incorrecto.
+    - Indica que existen características compartidas entre ambas clases o que la imagen presenta patrones sutiles.
+    - El modelo selecciona la clase con mayor probabilidad relativa, aunque la diferencia no sea extrema.
+    - En pruebas clínicas y de IA médica, es común obtener diagnósticos correctos con niveles de confianza moderados (60–75%).
+
+    El diagnóstico mostrado corresponde a la opción más probable según el análisis automatizado,
+    pero SIEMPRE debe ser interpretado como apoyo a la decisión médica, no como veredicto final.
+    """
+
+    
+    # EXPLICACIÓN COMPLETA
+    
+    explicacion_detallada = f"""
+{diagnostico_explicacion}
+
+
+{vulnerabilidad_explicacion}
+
+{explicacion_confianza}
+
+{recomendacion}
+
+
+NOTA IMPORTANTE:
+Este análisis combina:
+1. Diagnóstico automatizado de la radiografía (modelo de IA)
+2. Evaluación de vulnerabilidad según perfil de salud del paciente
+
+Ambos son factores INDEPENDIENTES que se consideran juntos para dar
+una recomendación contextualizada. El diagnóstico de la radiografía
+NO cambia según la vulnerabilidad, pero la urgencia de atención SÍ
+se ajusta considerando el perfil del paciente.
+
+⚕️ SIEMPRE consulte con un profesional médico calificado.
+"""
+    
+    
+    # MENSAJE CORTO PARA LA INTERFAZ
+    
+    if diagnostico == "NORMAL":
+        mensaje_corto = "Radiografía normal. Continuar con chequeos de rutina."
+    else:
+        if vulnerabilidad_info.get("nivel_vulnerabilidad") == "ALTA":
+            mensaje_corto = "🚨 Neumonía detectada en paciente de ALTA vulnerabilidad. Atención URGENTE requerida."
+        elif vulnerabilidad_info.get("nivel_vulnerabilidad") == "MEDIA":
+            mensaje_corto = "⚠️ Neumonía detectada en paciente con vulnerabilidad media. Consulta médica PRONTA."
+        else:
+            mensaje_corto = "⚠️ Neumonía detectada. Consulta médica necesaria."
     
     return {
-        "explicacion_detallada": explicacion_ia,
-        "mensaje_corto": mensaje_corto,
-        "recomendacion_vulnerabilidad": vulnerabilidad_info['explicacion']
+        "explicacion_detallada": explicacion_detallada.strip(),
+        "mensaje_corto": mensaje_corto
     }
+
+
+
+# ENDPOINT: SUBIR ANÁLISIS (USUARIOS AUTENTICADOS)
+
 @router.post("/subir")
 async def subir_analisis(
-    request: Request,
     imagen: UploadFile = File(...),
-    comentarios: Optional[str] = None
+    request: Request = None
 ):
-    """Subir radiografía para análisis (vinculado a persona) - . COMPLETAMENTE CORREGIDA"""
+    """
+    Endpoint para subir análisis para usuarios autenticados.
+    Incluye diagnóstico + información de vulnerabilidad del perfil.
+    """
+    if modelo is None:
+        raise HTTPException(status_code=500, detail="Modelo no disponible")
+
+    if not hasattr(request.state, 'persona') or not request.state.persona:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
     try:
-        persona = obtener_persona_autenticada(request)
-        persona_id = persona.get("id")
-        email = persona.get("email")
+        persona_id = request.state.persona["id"]
+        contenido = await imagen.read()
         
-        logging.info(f"Subiendo análisis para persona: {email} (ID: {persona_id})")
+        # Procesar imagen
+        img = Image.open(io.BytesIO(contenido)).convert("RGB").resize((224, 224))
+        arr = keras.preprocessing.image.img_to_array(img)
+        arr = np.expand_dims(arr, axis=0)
+
+        # Predicción
+        pred = modelo.predict(arr, verbose=0)[0]
+        prob = tf.nn.softmax(pred).numpy()
         
-        # Usar cliente admin para evitar problemas de RLS
-        supabase = get_supabase_admin()
+        clases = ["NORMAL", "PNEUMONIA"]
+        idx = int(np.argmax(prob))
+
+        diagnostico = clases[idx]
+        confianza = round(float(prob[idx] * 100), 2)
+        probabilidades = {
+            "normal": float(prob[0]),
+            "neumonia": float(prob[1]),
+        }
+
+        # Subir a storage
+        supabase_admin = get_supabase_admin()
+        nombre_archivo = f"{persona_id}/{uuid.uuid4()}.jpg"
         
-        # Validar tipo de archivo
-        allowed_types = ["image/jpeg", "image/png", "image/jpg"]
-        if imagen.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail="Formato de imagen no soportado. Use JPG, JPEG o PNG."
-            )
-        
-        # Generar nombre único para la imagen
-        file_extension = imagen.filename.split('.')[-1] if '.' in imagen.filename else 'jpg'
-        unique_filename = f"{persona_id}/{uuid.uuid4()}.{file_extension}"
-        
-        # Subir imagen a Supabase Storage
-        file_content = await imagen.read()
-        
-        logging.info(f"Subiendo imagen: {unique_filename}")
-        upload_response = supabase.storage.from_("radiografias").upload(
-            unique_filename,
-            file_content,
-            {"content-type": imagen.content_type}
+        supabase_admin.storage.from_("radiografias").upload(
+            nombre_archivo,
+            contenido,
+            {"content-type": imagen.content_type},
         )
         
-        if hasattr(upload_response, 'error') and upload_response.error:
-            logging.error(f"Error subiendo imagen: {upload_response.error.message}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error subiendo imagen: {upload_response.error.message}"
-            )
+        url = supabase_admin.storage.from_("radiografias").get_public_url(nombre_archivo)
+
+        # Obtener vulnerabilidad
+        vulnerabilidad_info = await obtener_informacion_vulnerabilidad(persona_id, supabase_admin)
         
-        # Obtener URL pública
-        url_response = supabase.storage.from_("radiografias").get_public_url(unique_filename)
-        
-        # Obtener información de vulnerabilidad ANTES de generar el análisis
-        vulnerabilidad_info = await obtener_informacion_vulnerabilidad(persona_id, supabase)
-        
-        # Usar el modelo de IA real en lugar de simulación
-        try:
-            from app import modelo
-            if modelo:
-                import numpy as np
-                import tensorflow as tf
-                from PIL import Image
-                import io
-                
-                # Procesar imagen para el modelo
-                img = Image.open(io.BytesIO(file_content)).convert('RGB').resize((224, 224))
-                img_array = np.array(img) / 255.0
-                img_array = np.expand_dims(img_array, axis=0)
-                
-                # Predecir
-                prediccion = modelo.predict(img_array, verbose=0)[0]
-                prob = tf.nn.softmax(prediccion).numpy()
-                
-                clases = ["NORMAL", "PNEUMONIA"]
-                idx = np.argmax(prob)
-                diagnostico = clases[idx]
-                confianza = float(prob[idx] * 100)
-                
-                # Calcular probabilidades
-                probabilidades = {
-                    "normal": float(prob[0]),
-                    "neumonia": float(prob[1])
-                }
-            else:
-                # Simulación de análisis si no hay modelo
-                diagnostico = random.choice(["NORMAL", "PNEUMONIA"])
-                confianza = round(random.uniform(70.0, 99.9), 2)
-                probabilidades = {
-                    "normal": 0.7 if diagnostico == "NORMAL" else 0.3,
-                    "neumonia": 0.3 if diagnostico == "NORMAL" else 0.7
-                }
-        except Exception as model_error:
-            logging.warning(f"Error usando modelo de IA: {model_error}")
-            # Fallback a simulación
-            diagnostico = random.choice(["NORMAL", "PNEUMONIA"])
-            confianza = round(random.uniform(70.0, 99.9), 2)
-            probabilidades = {
-                "normal": 0.7 if diagnostico == "NORMAL" else 0.3,
-                "neumonia": 0.3 if diagnostico == "NORMAL" else 0.7
-            }
-        
-        # Generar explicación del análisis
+        # Generar explicación
         explicacion_info = generar_explicacion_analisis(
-            diagnostico, 
-            confianza, 
+            diagnostico,
+            confianza,
             vulnerabilidad_info
         )
-        
-        # Preparar datos del análisis - IMPORTANTE: asegurar formato correcto
+
+        # Guardar en BD
         analisis_data = {
             "id": str(uuid.uuid4()),
             "persona_id": persona_id,
-            "imagen_url": url_response,
+            "imagen_url": url,
             "diagnostico": diagnostico,
-            "confianza": float(confianza),
-            "comentarios": comentarios,
+            "confianza": confianza,
+            "probabilidades": probabilidades,
             "fecha": datetime.now().isoformat(),
-            "probabilidades": probabilidades,  # Mantener como dict para JSONB
             "nivel_vulnerabilidad_paciente": vulnerabilidad_info["nivel_vulnerabilidad"],
             "prioridad_atencion_sugerida": vulnerabilidad_info["prioridad_atencion"],
             "explicacion_vulnerabilidad": vulnerabilidad_info["explicacion"],
-            "detalles_analisis": explicacion_info["explicacion_detallada"],
-            "created_at": datetime.now().isoformat()
+            "detalles_analisis": explicacion_info["explicacion_detallada"]
         }
-        
-        logging.info(f"Insertando análisis con vulnerabilidad (admin): {analisis_data}")
-        
-        # Insertar con cliente admin
-        insert_response = supabase.table("analisis_radiografias").insert(analisis_data).execute()
-        
-        if hasattr(insert_response, 'error') and insert_response.error:
-            logging.error(f"Error guardando análisis: {insert_response.error.message}")
-            # Intentar eliminar la imagen si falla
-            try:
-                supabase.storage.from_("radiografias").remove([unique_filename])
-            except:
-                pass
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error guardando análisis: {insert_response.error.message}"
-            )
-        
-        logging.info(f"✅ Análisis guardado exitosamente para persona ID: {persona_id}")
-        
-        # Preparar respuesta con información completa
-        respuesta = {
-            "success": True,
-            "message": "Análisis completado exitosamente",
-            "data": {
-                **analisis_data,
-                "explicacion": {
-                    "mensaje_corto": explicacion_info["mensaje_corto"],
-                    "recomendacion": explicacion_info["recomendacion_vulnerabilidad"],
-                    "detalles": explicacion_info["explicacion_detallada"]
-                },
-                "vulnerabilidad": vulnerabilidad_info
-            }
-        }
-        
-        return respuesta
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Error en análisis: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error procesando la radiografía: {str(e)}"
-        )
-@router.get("/historial")
-async def obtener_historial(request: Request):
-    """Obtener historial de análisis de la persona"""
-    try:
-        persona = obtener_persona_autenticada(request)
-        persona_id = persona.get("id")
-        
-        logging.info(f"Obteniendo historial para persona ID: {persona_id}")
-        
-        supabase = get_supabase()
-        
-        response = supabase.table("analisis_radiografias")\
-            .select("*")\
-            .eq("persona_id", persona_id)\
-            .order("fecha", desc=True)\
-            .execute()
-        
-        if hasattr(response, 'error') and response.error:
-            logging.error(f"Error obteniendo historial: {response.error.message}")
-            
-            # Si falla por RLS, intentar con admin
-            if "row-level security policy" in str(response.error):
-                supabase_admin = get_supabase_admin()
-                response = supabase_admin.table("analisis_radiografias")\
-                    .select("*")\
-                    .eq("persona_id", persona_id)\
-                    .order("fecha", desc=True)\
-                    .execute()
-            
-            if hasattr(response, 'error') and response.error:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Error obteniendo historial: {response.error.message}"
-                )
-        
-        # Procesar los datos para asegurar que los campos de vulnerabilidad estén presentes
-        historial_data = response.data if response.data else []
-        
-        # Convertir JSON strings a dicts si es necesario
-        for item in historial_data:
-            if item.get('probabilidades') and isinstance(item['probabilidades'], str):
-                try:
-                    item['probabilidades'] = json.loads(item['probabilidades'])
-                except:
-                    item['probabilidades'] = {"normal": 0.5, "neumonia": 0.5}
-            
-            # Asegurar que los campos de vulnerabilidad tengan valores por defecto si están vacíos
-            if not item.get('nivel_vulnerabilidad_paciente'):
-                item['nivel_vulnerabilidad_paciente'] = "NO_DISPONIBLE"
-            if not item.get('prioridad_atencion_sugerida'):
-                item['prioridad_atencion_sugerida'] = "MEDIA"
-            if not item.get('explicacion_vulnerabilidad'):
-                item['explicacion_vulnerabilidad'] = "Información de vulnerabilidad no disponible"
-            if not item.get('detalles_analisis'):
-                item['detalles_analisis'] = "Análisis estándar sin detalles adicionales"
-        
+
+        supabase_admin.table("analisis_radiografias").insert(analisis_data).execute()
+
         return {
             "success": True,
-            "data": historial_data
+            "data": {
+                "diagnostico": diagnostico,
+                "confianza": confianza,
+                "probabilidades": probabilidades,
+                "vulnerabilidad": {
+                    "nivel": vulnerabilidad_info["nivel_vulnerabilidad"],
+                    "prioridad": vulnerabilidad_info["prioridad_atencion"],
+                    "explicacion": vulnerabilidad_info["explicacion"]
+                },
+                "detalles_analisis": explicacion_info["explicacion_detallada"],
+                "nivel_vulnerabilidad_paciente": vulnerabilidad_info["nivel_vulnerabilidad"],
+                "prioridad_atencion_sugerida": vulnerabilidad_info["prioridad_atencion"],
+                "explicacion_vulnerabilidad": vulnerabilidad_info["explicacion"]
+            },
+            "message": "Análisis completado y guardado exitosamente"
         }
-        
-    except HTTPException:
-        raise
+
     except Exception as e:
-        logging.error(f"Error obteniendo historial: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Error obteniendo historial"
+        print(f"Error en subir_analisis: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ENDPOINT: OBTENER HISTORIAL
+
+@router.get("/historial")
+async def obtener_historial(request: Request):
+    """Obtener historial de análisis del usuario autenticado"""
+    if not hasattr(request.state, 'persona') or not request.state.persona:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
+    try:
+        persona_id = request.state.persona["id"]
+        supabase = get_supabase()
+        
+        response = (
+            supabase.table("analisis_radiografias")
+            .select("*")
+            .eq("persona_id", persona_id)
+            .order("fecha", desc=True)
+            .execute()
         )
+
+        return {
+            "success": True,
+            "data": response.data
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# ENDPOINT: OBTENER PERFIL DE SALUD
 
 @router.get("/perfil-salud")
 async def obtener_perfil_salud(request: Request):
-    """Obtener perfil de salud del usuario"""
+    """Obtener perfil de salud del usuario autenticado"""
+    if not hasattr(request.state, 'persona') or not request.state.persona:
+        raise HTTPException(status_code=401, detail="Usuario no autenticado")
+
     try:
-        persona = obtener_persona_autenticada(request)
-        persona_id = persona.get("id")
-
+        persona_id = request.state.persona["id"]
         supabase = get_supabase()
-
+        
         response = (
             supabase.table("perfil_salud")
             .select("*")
@@ -470,32 +383,18 @@ async def obtener_perfil_salud(request: Request):
             .execute()
         )
 
-        #  NO hay perfil
-        if not response.data or len(response.data) == 0:
+        if not response.data:
             return {
-                "success": True,
-                "data": None,
-                "message": "El usuario no tiene perfil de salud"
+                "success": False,
+                "message": "No se encontró perfil de salud",
+                "datos": None
             }
-
-        perfil = response.data[0]
-
-        # Convertir experiencias_covid si viene como string
-        if perfil.get("experiencias_covid") and isinstance(perfil["experiencias_covid"], str):
-            try:
-                perfil["experiencias_covid"] = json.loads(perfil["experiencias_covid"])
-            except:
-                perfil["experiencias_covid"] = {}
 
         return {
             "success": True,
-            "data": perfil
+            "exito": True,
+            "datos": response.data[0]
         }
 
     except Exception as e:
-        logging.error("Error obteniendo perfil salud", exc_info=True)
-        return {
-            "success": False,
-            "data": None,
-            "message": "Error interno obteniendo perfil de salud"
-        }
+        raise HTTPException(status_code=500, detail=str(e))

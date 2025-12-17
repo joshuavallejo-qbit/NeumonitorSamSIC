@@ -317,6 +317,11 @@ export default function PaginaAnalisisPublico() {
                     <Typography variant="body2">
                       Confianza: {resultado.confianza}%
                     </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      ℹ️ La confianza indica qué tan seguro está el modelo al comparar diagnósticos posibles.
+                      Un valor menor al 80% no implica un error, sino mayor ambigüedad en la imagen.
+                    </Typography>
+
                   </Alert>
                   
                   <Typography variant="body2" gutterBottom>
