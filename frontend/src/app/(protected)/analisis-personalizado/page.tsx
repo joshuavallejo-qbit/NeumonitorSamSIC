@@ -1,7 +1,5 @@
 //frontend/src/app/(protected)/analisis-personalizado/page.tsx:
-
 'use client';
-
 import { useState, useEffect, useRef } from 'react';
 import {
   Container,
