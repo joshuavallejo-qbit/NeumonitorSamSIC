@@ -2,7 +2,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+
 import {
+  
   AppBar,
   Toolbar,
   Typography,
@@ -23,6 +26,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import {
+  MedicalServices,
   Menu as MenuIcon,
   Dashboard,
   Assessment,
@@ -37,10 +41,9 @@ import { usoAlmacenInterfaz } from '@/store/usoAlmacen';
 import { servidorApi } from '@/lib/api';
 
 const enlacesBase = [
-  { texto: 'Análisis', icono: <Assessment />, ruta: '/analisis' },
   { texto: 'Equipo', icono: <Group />, ruta: '/equipo' },
 ];
-
+const enlaceAnalisis={ texto: 'Análisis', icono: <Assessment />, ruta: '/analisis' };
 const enlaceHistorial = { texto: 'Historial', icono: <History />, ruta: '/historial' };
 const enlaceDashboard = { texto: 'Dashboard', icono: <Dashboard />, ruta: '/dashboard' };
 
@@ -109,6 +112,11 @@ export default function BarraNavegacion() {
   };
 
   const navegar = (ruta: string) => {
+    if (ruta === '/analisis' && usuarioAutenticado) {
+    setMenuAbierto(false);
+    router.push('/dashboard');
+    return;
+  }
     if (ruta === '/historial' && !usuarioAutenticado) {
       setMenuAbierto(false);
       router.push('/login');
@@ -190,9 +198,10 @@ export default function BarraNavegacion() {
     setAnchorEl(null);
   };
 
-  const enlacesVisibles = usuarioAutenticado
-    ? [...enlacesBase, enlaceHistorial, enlaceDashboard]
-    : enlacesBase;
+const enlacesVisibles = usuarioAutenticado
+  ? [...enlacesBase, enlaceHistorial, enlaceDashboard]
+  : [...enlacesBase, enlaceAnalisis];
+
 
   return (
     <>
@@ -237,6 +246,14 @@ export default function BarraNavegacion() {
                   <ListItemText>Cerrar Sesión</ListItemText>
                 </MenuItem>
               </Menu>
+              <Button
+  component={Link}
+  href="/analisis-personalizado"
+  sx={{ color: 'white' }}
+  startIcon={<MedicalServices />}
+>
+  Análisis Personalizado
+</Button>
             </>
           ) : (
             <>
