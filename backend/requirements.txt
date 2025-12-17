@@ -1,3 +1,4 @@
+gdown==5.2.0
 absl-py==2.3.1
 altair==6.0.0
 annotated-doc==0.0.4     
@@ -175,3 +176,4 @@ wordcloud==1.9.4
 wrapt==2.0.1
 yarl==1.22.0
 zstandard==0.25.0
+
