@@ -1,43 +1,6 @@
 # Neumonitor -- Sistema Web de Detección Automática de Neumonía mediante IA
 Equipo NeumoScanners - Samsung Innovation Campus
-##  Cómo usar este proyecto en tu computadora local
 
-Para ejecutar este proyecto en tu entorno local con **Visual Studio
-Code** clonar este repositorio, sigue estos pasos:
-
-### 1. Instalar las dependencias necesarias
-
-Asegúrate de tener Python instalado. Luego, ejecuta en la terminal:
-
-``` bash
-pip install streamlit
-pip install tensorflow
-pip install pillow
-pip install numpy
-```
-
-### 2. Ejecutar el modelo (solo si es necesario entrenar o generar el archivo del modelo)
-
-``` bash
-python model.py
-```
-
-### 3. Iniciar la aplicación web con Streamlit
-
-Ubicado dentro del directorio del proyecto:
-
-``` bash
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-```
-
-Esto abrirá automáticamente la interfaz web en tu navegador.
-
-### 4. Descargar el archivo dataset del Kaggle 
-https://www.kaggle.com/code/madz2000/pneumonia-detection-using-cnn-92-6-accuracy 
-Usted tendrá que descomprimir la carpeta chest_array ya que ahí están las tres carpetas necesarias para este proyecto
-![alt text](image.png)
-Se recomienda la siguiente estructura de proyecto en su visual studio code:
-![alt text](image-2.png)
 ## Integrantes del equipo y roles
 
   --------
@@ -143,6 +106,10 @@ imagen y devuelve:
 
 Esta herramienta sirve como apoyo, no como reemplazo del criterio
 médico.
+### Links de la plataforma web desplegada
+Vercel (frontend): https://neumonitor2.vercel.app/  
+Render (Backend): https://neumonitor2.onrender.com/ 
+Nota: Al estar en plan gratuito de render, demora un poco en encenderse nuevamente cuando hay tiempo de inactividad, sea paciente por favor.
 
 ## Cómo usar este proyecto en tu computadora local
 
@@ -176,14 +143,34 @@ NEXTAUTH_SECRET="tu_clave_aqui"
 Instalar dependencias:
 ``` bash
 cd backend
-pip install fastapi uvicorn tensorflow pillow python-multipart python-dotenv supabase email-validator gdown
+pip install fastapi uvicorn tensorflow pillow python-multipart python-dotenv supabase email-validator gdown numpy
 ```
 Iniciar el backend:
 ``` bash
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ``` 
 Nota: Para evitar errores con importaciones relativas en controladores y middleware, ejecutar desde la raíz del proyecto usando backend.app:app como se muestra arriba.
-### 3. Frontend
+
+### 2. Ejecutar el modelo (solo si es necesario entrenar o generar el archivo del modelo)
+
+``` bash
+cd backend
+python model.py
+```
+
+
+### 3. Descargar el archivo dataset del Kaggle 
+https://www.kaggle.com/code/madz2000/pneumonia-detection-using-cnn-92-6-accuracy 
+Usted tendrá que descomprimir la carpeta chest_array ya que ahí están las tres carpetas necesarias para este proyecto
+![alt text](image.png)
+Se recomienda la siguiente estructura de proyecto en su visual studio code:
+![alt text](image-2.png)
+
+
+
+
+
+### 4. Frontend
 
 Instalar dependencias:
 
@@ -212,7 +199,7 @@ El modelo está diseñado como **sistema de apoyo a la decisión médica**, no c
 
 ##  ¿Qué hace `model.py`?
 
-El archivo `model.py` realiza todo el flujo de entrenamiento y evaluación del modelo:
+El archivo `model.py`, que está en la carpeta de backend, realiza todo el flujo de entrenamiento y evaluación del modelo:
 
 ### 1. Preparación de datos
 
