@@ -91,7 +91,6 @@ export default function LayoutProtegido({ children }: { children: ReactNode }) {
   
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <BarraNavegacion />
       <Container component="main" sx={{ flex: 1, py: 4 }}>
         {children}
       </Container>

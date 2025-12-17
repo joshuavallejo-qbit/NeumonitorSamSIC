@@ -105,9 +105,8 @@ export default function PaginaHistorial() {
       'Confianza (%)',
       'Probabilidad Normal (%)',
       'Probabilidad Neumonía (%)',
-      'Imagen (URL)',
-      'Comentarios'
-    ].join(';');
+      'Imagen (URL)'
+        ].join(';');
 
     const filas = analisis.map(a => [
       formatearFecha(a.fecha),
@@ -115,9 +114,7 @@ export default function PaginaHistorial() {
       a.confianza?.toFixed(2) || '0',
       ((a.probabilidades?.normal || 0) * 100).toFixed(1),
       ((a.probabilidades?.neumonia || 0) * 100).toFixed(1),
-      a.imagen_url || '',
-      a.comentarios || 'Sin comentarios'
-    ].join(';'));
+      a.imagen_url || ''    ].join(';'));
 
     const contenidoCSV = '\uFEFF' + [encabezados, ...filas].join('\n');
     const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' });
@@ -187,7 +184,7 @@ export default function PaginaHistorial() {
             </Typography>
             <Button
               variant="contained"
-              onClick={() => router.push('/analisis')}
+              onClick={() => router.push('/analisis-personalizado')}
             >
               Ir a Análisis
             </Button>
@@ -211,7 +208,6 @@ export default function PaginaHistorial() {
                     <TableCell>Diagnóstico</TableCell>
                     <TableCell>Confianza</TableCell>
                     <TableCell>Probabilidades</TableCell>
-                    <TableCell>Comentarios</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -250,7 +246,6 @@ export default function PaginaHistorial() {
                           </Typography>
                         </Box>
                       </TableCell>
-                      <TableCell>{item.comentarios || '-'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
