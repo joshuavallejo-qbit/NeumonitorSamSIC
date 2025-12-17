@@ -1,4 +1,4 @@
-# backend/middleware/auth.py - Versión simplificada que funciona
+# backend/middleware/auth.py - . simplificada que funciona
 from fastapi import HTTPException, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import logging
@@ -16,7 +16,7 @@ class AuthMiddleware:
         request: Request, 
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
     ):
-        """Verificar autenticación - versión simplificada y funcional"""
+        """Verificar autenticación - . simplificada y funcional"""
         try:
             # Obtener token
             token = credentials.credentials if credentials else None

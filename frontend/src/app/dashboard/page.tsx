@@ -11,12 +11,10 @@ import {
   Box,
   Button,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   LinearProgress,
   Alert,
+  Chip,
+  Divider,
 } from '@mui/material';
 import {
   MedicalServices,
@@ -24,15 +22,27 @@ import {
   CloudUpload,
   CheckCircle,
   Warning,
+  Error as ErrorIcon,
+  Person,
+  LocationOn,
+  AttachMoney,
+  HealthAndSafety,
 } from '@mui/icons-material';
 import { useRouter } from 'next/navigation';
 import { servidorApi } from '@/lib/api';
+
 interface EstadisticasPersonales {
   totalAnalisis: number;
   normales: number;
   neumonia: number;
   confianzaPromedio: string;
   ultimoAnalisis?: any;
+  vulnerabilidad?: {
+    nivel_vulnerabilidad: string;
+    prioridad_atencion: string;
+    factores_criticos: number;
+    motivos: string[];
+  };
 }
 
 export default function PaginaDashboard() {
@@ -44,6 +54,7 @@ export default function PaginaDashboard() {
     neumonia: 0,
     confianzaPromedio: '0',
   });
+  const [perfilSalud, setPerfilSalud] = useState<any>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,16 +73,33 @@ export default function PaginaDashboard() {
       // Obtener historial personal
       const historialRespuesta = await servidorApi.obtenerHistorial();
       
-      if (historialRespuesta.exito && historialRespuesta.datos?.data) {
-        const analisis = historialRespuesta.datos.data;
+      if (historialRespuesta.exito && historialRespuesta.datos) {
+        const analisis = Array.isArray(historialRespuesta.datos) 
+          ? historialRespuesta.datos 
+          : historialRespuesta.datos.data || [];
+        
+        // Calcular estadísticas CORRECTAMENTE
+        const normales = analisis.filter((a: any) => 
+          a.diagnostico === 'NORMAL' || a.diagnostico === 'Normal'
+        ).length;
+        
+        const neumonia = analisis.filter((a: any) => 
+          a.diagnostico === 'NEUMONIA' || a.diagnostico === 'PNEUMONIA' || a.diagnostico === 'Neumonia'
+        ).length;
+        
+        const totalAnalisis = analisis.length;
+        
+        // Calcular confianza promedio solo de los que tienen confianza
+        const analisisConConfianza = analisis.filter((a: any) => a.confianza);
+        const confianzaPromedio = analisisConConfianza.length > 0
+          ? (analisisConConfianza.reduce((acc: number, a: any) => acc + a.confianza, 0) / analisisConConfianza.length).toFixed(1)
+          : '0';
         
         const nuevasEstadisticas: EstadisticasPersonales = {
-          totalAnalisis: analisis.length,
-          normales: analisis.filter((a: any) => a.diagnostico === 'NORMAL').length,
-          neumonia: analisis.filter((a: any) => a.diagnostico === 'NEUMONIA').length,
-          confianzaPromedio: analisis.length > 0
-            ? (analisis.reduce((acc: number, a: any) => acc + a.confianza, 0) / analisis.length).toFixed(1)
-            : '0',
+          totalAnalisis,
+          normales,
+          neumonia,
+          confianzaPromedio,
           ultimoAnalisis: analisis.length > 0 ? analisis[0] : null,
         };
         
@@ -84,7 +112,21 @@ export default function PaginaDashboard() {
           confianzaPromedio: '0',
         });
       }
-    } catch (err) {
+      
+      // Obtener perfil de salud
+try {
+  const perfilRespuesta = await servidorApi.obtenerPerfilSalud();
+  if (perfilRespuesta.exito && perfilRespuesta.datos) {
+    // El perfil puede estar en diferentes lugares de la respuesta
+    const perfilData = perfilRespuesta.datos.data || perfilRespuesta.datos;
+    setPerfilSalud(perfilData);
+  }
+} catch (perfilError) {
+  console.log('No se pudo cargar el perfil de salud:', perfilError);
+  // No es un error crítico, continuar sin perfil
+}
+      
+    } catch (err: any) {
       setError('Error cargando datos del dashboard');
       console.error('Error:', err);
     } finally {
@@ -95,6 +137,27 @@ export default function PaginaDashboard() {
   const verificarSaludServidor = async () => {
     const respuesta = await servidorApi.salud();
     setEstadoServidor(respuesta.exito);
+  };
+
+  const obtenerColorVulnerabilidad = (nivel: string) => {
+    switch (nivel) {
+      case 'ALTA': return 'error';
+      case 'MEDIA': return 'warning';
+      case 'BAJA': return 'success';
+      default: return 'default';
+    }
+  };
+
+  const formatearFecha = (fechaString: string) => {
+    try {
+      return new Date(fechaString).toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      });
+    } catch {
+      return 'Fecha inválida';
+    }
   };
 
   return (
@@ -113,7 +176,8 @@ export default function PaginaDashboard() {
       <Card sx={{ mb: 3 }}>
         <CardContent>
           <Grid container alignItems="center" spacing={2}>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+<Grid size={{ xs: 12, md: 6 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <MedicalServices color="primary" sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography variant="h6">Estado del Sistema</Typography>
@@ -123,7 +187,9 @@ export default function PaginaDashboard() {
                 </Box>
               </Box>
             </Grid>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >              {estadoServidor === null ? (
+    <Grid size={{ xs: 12, md: 6 }}
+sx={{ textAlign: 'right' }}>
+              {estadoServidor === null ? (
                 <LinearProgress sx={{ width: 100, display: 'inline-block' }} />
               ) : estadoServidor ? (
                 <Button
@@ -155,7 +221,8 @@ export default function PaginaDashboard() {
       </Typography>
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+       <Grid size={{ xs: 12, sm:6 ,md: 3 }}>
+          <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom>
                 Total de Análisis
@@ -164,7 +231,9 @@ export default function PaginaDashboard() {
             </CardContent>
           </Card>
         </Grid>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+        <Grid size={{ xs: 12, sm:6, md: 3}}>
+
+          <Card>
             <CardContent>
               <Typography color="success.main" gutterBottom>
                 Radiografías Normales
@@ -173,7 +242,9 @@ export default function PaginaDashboard() {
             </CardContent>
           </Card>
         </Grid>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+        <Grid size={{ xs: 12, md: 3, sm:6 }}>
+        
+          <Card>
             <CardContent>
               <Typography color="error.main" gutterBottom>
                 Posibles Neumonías
@@ -182,7 +253,9 @@ export default function PaginaDashboard() {
             </CardContent>
           </Card>
         </Grid>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+        <Grid size={{ xs: 12, md: 3 ,sm:6}}>
+
+          <Card>
             <CardContent>
               <Typography color="text.secondary" gutterBottom>
                 Confianza Promedio
@@ -193,26 +266,29 @@ export default function PaginaDashboard() {
         </Grid>
       </Grid>
 
-      {/* Acciones rápidas */}
+      {/* Acciones rápidas y último análisis */}
       <Grid container spacing={3}>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+<Grid size={{ xs: 12, md: 6 }}>
+          <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Acciones Rápidas
               </Typography>
               <Grid container spacing={2} sx={{ mt: 2 }}>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >                  <Button
+<Grid size={{ xs: 12 }}>
+                  <Button
                     variant="contained"
                     startIcon={<CloudUpload />}
                     fullWidth
                     sx={{ py: 2 }}
-                    onClick={() => router.push('/analisis')}
+                    onClick={() => router.push('/analisis-personalizado')}
                     disabled={cargando}
                   >
                     Nuevo Análisis
                   </Button>
                 </Grid>
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >                  <Button
+<Grid size={{ xs: 12}}>
+                  <Button
                     variant="outlined"
                     startIcon={<History />}
                     fullWidth
@@ -228,7 +304,8 @@ export default function PaginaDashboard() {
           </Card>
         </Grid>
 
-<Grid sx={{ flexBasis: { xs: '100%', md: '50%' }, maxWidth: { xs: '100%', md: '50%' }, }} >          <Card>
+<Grid size={{ xs: 12, md: 6 }}>
+          <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Último Análisis
@@ -237,15 +314,29 @@ export default function PaginaDashboard() {
                 <LinearProgress sx={{ my: 2 }} />
               ) : estadisticas.ultimoAnalisis ? (
                 <Box sx={{ mt: 2 }}>
-                  <Typography variant="body1" fontWeight="medium">
-                    Diagnóstico: {estadisticas.ultimoAnalisis.diagnostico}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                    <Chip
+                      label={estadisticas.ultimoAnalisis.diagnostico}
+                      color={estadisticas.ultimoAnalisis.diagnostico === 'NORMAL' ? 'success' : 'error'}
+                      sx={{ mr: 2 }}
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      Confianza: {estadisticas.ultimoAnalisis.confianza?.toFixed(1) || '0'}%
+                    </Typography>
+                  </Box>
+                  
                   <Typography variant="body2" color="text.secondary">
-                    Confianza: {estadisticas.ultimoAnalisis.confianza}%
+                    Fecha: {formatearFecha(estadisticas.ultimoAnalisis.fecha)}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Fecha: {new Date(estadisticas.ultimoAnalisis.fecha).toLocaleDateString()}
-                  </Typography>
+                  
+                  {estadisticas.ultimoAnalisis.nivel_vulnerabilidad_paciente && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Vulnerabilidad: {estadisticas.ultimoAnalisis.nivel_vulnerabilidad_paciente}
+                      </Typography>
+                    </Box>
+                  )}
+                  
                 </Box>
               ) : (
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>

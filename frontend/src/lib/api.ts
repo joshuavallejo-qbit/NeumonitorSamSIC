@@ -29,7 +29,7 @@ clienteApi.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores - CORREGIDO PARA EVITAR BUCLES
+// Interceptor para manejar errores - . PARA EVITAR BUCLES
 clienteApi.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -254,5 +254,43 @@ export const servidorApi = {
     } catch (error: any) {
       return manejarErrorApi(error);
     }
+  },
+  calcularVulnerabilidad: async (personaId: string): Promise<RespuestaApi> => {
+    try {
+      const respuesta = await clienteApi.get(`/vulnerabilidad/${personaId}`);
+      return { 
+        exito: true, 
+        datos: respuesta.data 
+      };
+    } catch (error: any) {
+      return manejarErrorApi(error);
+    }
+  },
+
+  obtenerPerfilSalud: async (): Promise<RespuestaApi> => {
+    try {
+      const respuesta = await clienteApi.get('/analisis/perfil-salud');
+      return { 
+        exito: true, 
+        datos: respuesta.data 
+      };
+    } catch (error: any) {
+      return manejarErrorApi(error);
+    }
+  },
+  recuperarPassword: async (email: string, nuevaPassword: string, confirmarPassword: string): Promise<RespuestaApi> => {
+  try {
+    const respuesta = await clienteApi.post('/auth/recuperar-password', {
+      email,
+      nueva_password: nuevaPassword,
+      confirmar_password: confirmarPassword
+    });
+    return { 
+      exito: true, 
+      datos: respuesta.data 
+    };
+  } catch (error: any) {
+    return manejarErrorApi(error);
   }
+},
 };
