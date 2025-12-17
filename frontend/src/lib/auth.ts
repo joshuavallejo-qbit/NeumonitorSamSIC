@@ -1,11 +1,11 @@
-// lib/auth.ts Configuración de autenticación
+// frontend/src/lib/auth.ts
 import { AuthOptions } from 'next-auth';
 
 export const opcionesAuth: AuthOptions = {
   providers: [],
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 días
+    maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
     signIn: '/login',
@@ -30,32 +30,55 @@ export const opcionesAuth: AuthOptions = {
   },
 };
 
-// Funciones de autenticación
+// CORRECCIÓN: Funciones de autenticación mejoradas
 export const serviciosAuth = {
   verificarAutenticacion: (): boolean => {
     if (typeof window !== 'undefined') {
-      return !!localStorage.getItem('token');
+      const token = localStorage.getItem('auth_token');
+      const persona = localStorage.getItem('persona_data');
+      
+      // Debe tener ambos: token y datos de persona
+      return !!(token && persona);
     }
     return false;
   },
 
   obtenerToken: (): string | null => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('token');
+      return localStorage.getItem('auth_token');
     }
     return null;
   },
 
-  cerrarSesion: (): void => {
+  // NUEVO: Función para limpiar sesión completamente
+  limpiarSesion: (): void => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('persona_data');
+      
+      // Eliminar cookie
+      document.cookie = 'auth_token=; path=/; max-age=0';
+      
+      // Disparar evento de logout
+      window.dispatchEvent(new Event('logout'));
+    }
+  },
+
+  cerrarSesion: (): void => {
+    serviciosAuth.limpiarSesion();
+    
+    if (typeof window !== 'undefined') {
+      // Usar replace en lugar de href para evitar historial
+      window.location.replace('/login');
     }
   },
 
   establecerToken: (token: string): void => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('token', token);
+      localStorage.setItem('auth_token', token);
+      
+      // También establecer cookie
+      document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
     }
   },
 };

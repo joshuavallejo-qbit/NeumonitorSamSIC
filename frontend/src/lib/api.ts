@@ -11,6 +11,10 @@ const clienteApi = axios.create({
 clienteApi.defaults.headers.common['Content-Type'] = 'application/json';
 clienteApi.defaults.headers.common['Accept'] = 'application/json';
 
+// Variable para evitar múltiples redirecciones simultáneas
+let isRedirecting = false;
+let redirectTimeout: NodeJS.Timeout | null = null;
+
 // Interceptor para agregar token
 clienteApi.interceptors.request.use(
   (config) => {
@@ -25,17 +29,38 @@ clienteApi.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores
+// Interceptor para manejar errores - CORREGIDO PARA EVITAR BUCLES
 clienteApi.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined' && 
-          !window.location.pathname.includes('/login') && 
-          !window.location.pathname.includes('/registro')) {
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      const currentPath = window.location.pathname;
+      
+      // NO hacer nada si ya estamos en login/registro
+      if (currentPath.includes('/login') || currentPath.includes('/registro')) {
+        return Promise.reject(error);
+      }
+      
+      // Solo procesar si no estamos ya redirigiendo
+      if (!isRedirecting) {
+        isRedirecting = true;
+        
+        console.log('🚫 Error 401: Sesión inválida');
+        
+        // Limpiar datos de sesión INMEDIATAMENTE
         localStorage.removeItem('auth_token');
         localStorage.removeItem('persona_data');
-        window.location.href = '/login';
+        document.cookie = 'auth_token=; path=/; max-age=0';
+        
+        // Disparar evento de logout
+        window.dispatchEvent(new Event('logout'));
+        
+        // Redirigir después de un pequeño delay para evitar race conditions
+        if (redirectTimeout) clearTimeout(redirectTimeout);
+        redirectTimeout = setTimeout(() => {
+          window.location.replace('/login');
+          isRedirecting = false;
+        }, 100);
       }
     }
     return Promise.reject(error);
@@ -64,12 +89,13 @@ const manejarErrorApi = (error: any): RespuestaApi => {
 };
 
 export const servidorApi = {
-  // CORRECCIÓN PRINCIPAL: Login mejorado
   login: async (email: string, password: string): Promise<RespuestaApi> => {
     try {
+      // Resetear bandera de redirección antes de login
+      isRedirecting = false;
+      
       const respuesta = await clienteApi.post('/auth/login', { email, password });
       
-      // Verificar estructura de respuesta
       if (respuesta.data.success && respuesta.data.data?.token) {
         const token = respuesta.data.data.token;
         const persona = respuesta.data.data.persona;
@@ -78,8 +104,10 @@ export const servidorApi = {
         localStorage.setItem('auth_token', token);
         localStorage.setItem('persona_data', JSON.stringify(persona));
         
-        // NUEVO: Guardar en cookies para el middleware
+        // Guardar en cookies
         document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
+        
+        console.log('✅ Sesión establecida correctamente');
         
         return { 
           exito: true, 
@@ -117,16 +145,26 @@ export const servidorApi = {
 
   logout: async (): Promise<RespuestaApi> => {
     try {
+      // Resetear bandera
+      isRedirecting = false;
+      
       await clienteApi.post('/auth/logout');
+      
+      // Limpiar todo
       localStorage.removeItem('auth_token');
       localStorage.removeItem('persona_data');
-      
-      // NUEVO: Eliminar cookie
       document.cookie = 'auth_token=; path=/; max-age=0';
+      
+      console.log('✅ Sesión cerrada correctamente');
       
       return { exito: true };
     } catch (error: any) {
-      return manejarErrorApi(error);
+      // Incluso si falla el logout en el servidor, limpiar localmente
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('persona_data');
+      document.cookie = 'auth_token=; path=/; max-age=0';
+      
+      return { exito: true };
     }
   },
 
