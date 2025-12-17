@@ -3,7 +3,7 @@ import axios from 'axios';
 import { RespuestaApi } from '@/types/tipos';
 
 const clienteApi = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'https://neumonitor2.onrender.com',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   timeout: 30000,
   withCredentials: true,  // Permite enviar cookies/tokens
 });
