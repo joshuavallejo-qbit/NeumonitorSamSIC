@@ -1,37 +1,38 @@
-// frontend/middleware.ts - .
+// frontend/middleware.ts
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  // Verificar token en cookies
   const token = request.cookies.get('auth_token')?.value
+  const path = request.nextUrl.pathname
   
-  const isAuthPage = request.nextUrl.pathname.startsWith('/login') || 
-                    request.nextUrl.pathname.startsWith('/registro')
+  const isAuthPage = path.startsWith('/login') || path.startsWith('/registro')
+  const isProtectedPage = path.startsWith('/dashboard') || path.startsWith('/historial')
   
-  // Solo las rutas de dashboard/historial requieren autenticación
-  const isProtectedPage = request.nextUrl.pathname.startsWith('/dashboard') ||
-                         request.nextUrl.pathname.startsWith('/historial')
-  
-  console.log('🔍 Middleware ejecutándose:', {
-    path: request.nextUrl.pathname,
+  console.log('🔍 Middleware:', {
+    path,
     hasToken: !!token,
+    tokenPreview: token ? token.substring(0, 8) + '...' : 'none',
     isAuthPage,
     isProtectedPage
   })
   
-  // Redirigir a login si no está autenticado y quiere acceder a páginas protegidas
+  // CASO 1: Página protegida sin token → ir a login
   if (!token && isProtectedPage) {
-    console.log('🚫 Redirigiendo a login (no hay token)')
-    return NextResponse.redirect(new URL('/login', request.url))
+    console.log('🚫 Sin token, redirigiendo a login')
+    const loginUrl = new URL('/login', request.url)
+    // Agregar parámetro para tracking
+    loginUrl.searchParams.set('redirect', path)
+    return NextResponse.redirect(loginUrl)
   }
   
-  // Redirigir al dashboard si está autenticado y quiere acceder a login/registro
+  // CASO 2: Ya autenticado intentando acceder a login/registro → ir a dashboard
   if (token && isAuthPage) {
-    console.log('🔄 Redirigiendo a dashboard (ya autenticado)')
+    console.log('✅ Ya autenticado, redirigiendo a dashboard')
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
   
+  // CASO 3: Todo OK, continuar
   return NextResponse.next()
 }
 
