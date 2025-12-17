@@ -507,7 +507,7 @@ setResultado(datosResultado);
                       ? '🚨 Se detectó neumonía en paciente de ALTA vulnerabilidad. Consulte URGENTEMENTE con un médico.'
                       : resultado.vulnerabilidad?.nivel === 'MEDIA'
                       ? '⚠️ Se detectó neumonía en paciente con vulnerabilidad media. Consulte PRONTO con un médico.'
-                      : '⚠️ Se detectaron signos de neumonía. Consulte con un médico para evaluación.'}
+                      : '⚠️ Siempre consulte con un médico para evaluación.'}
                   </Alert>
                 </Box>
               )}
