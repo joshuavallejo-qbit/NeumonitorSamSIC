@@ -1,4 +1,4 @@
-//frontend/src/components/interfaz/BarraNavegacion
+// frontend/src/components/interfaz/BarraNavegacion.tsx 
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -31,7 +31,6 @@ import {
   Brightness4,
   Brightness7,
   Logout,
-  Person,
 } from '@mui/icons-material';
 import { useRouter, usePathname } from 'next/navigation';
 import { usoAlmacenInterfaz } from '@/store/usoAlmacen';
@@ -43,7 +42,7 @@ const enlacesBase = [
 ];
 
 const enlaceHistorial = { texto: 'Historial', icono: <History />, ruta: '/historial' };
-const enlaceDashboard =   { texto: 'Dashboard', icono: <Dashboard />, ruta: '/dashboard' };
+const enlaceDashboard = { texto: 'Dashboard', icono: <Dashboard />, ruta: '/dashboard' };
 
 export default function BarraNavegacion() {
   const [menuAbierto, setMenuAbierto] = useState(false);
@@ -58,31 +57,33 @@ export default function BarraNavegacion() {
   const tema = useTheme();
   const { alternarTema } = usoAlmacenInterfaz();
 
-useEffect(() => {
-  // Verificar al montar
-  verificarAutenticacion();
+  useEffect(() => {
+    verificarAutenticacion();
 
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === 'auth_token' || e.key === 'persona_data') {
-      verificarAutenticacion();
-    }
-  };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'auth_token' || e.key === 'persona_data') {
+        verificarAutenticacion();
+      }
+    };
 
-  // Escuchar eventos de login/logout
-  const onLogin = () => verificarAutenticacion();
+    const onLogin = () => verificarAutenticacion();
+    const onLogout = () => {
+      setUsuarioAutenticado(false);
+      setPersonaData(null);
+    };
 
-  window.addEventListener('storage', onStorage);
-  window.addEventListener('login', onLogin);
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('login', onLogin);
+    window.addEventListener('logout', onLogout);
 
-  return () => {
-    window.removeEventListener('storage', onStorage);
-    window.removeEventListener('login', onLogin);
-  };
-}, []);
-
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('login', onLogin);
+      window.removeEventListener('logout', onLogout);
+    };
+  }, []);
 
   useEffect(() => {
-    // Ocultar el loading cuando cambie la ruta
     setCargando(false);
   }, [rutaActual]);
 
@@ -108,55 +109,76 @@ useEffect(() => {
   };
 
   const navegar = (ruta: string) => {
-    // Bloquear acceso a /historial si no está autenticado
     if (ruta === '/historial' && !usuarioAutenticado) {
       setMenuAbierto(false);
-      // opcional: podrías mostrar un snackbar indicando que inicie sesión; aquí redirigimos a login
       router.push('/login');
       return;
     }
 
-    // Si ya estamos en la misma página, no hacer nada
     if (rutaActual === ruta) {
       setMenuAbierto(false);
       return;
     }
 
-    // Mostrar loading brevemente
     setCargando(true);
     setMenuAbierto(false);
     
-    // Limpiar timeout anterior si existe
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     
-    // Configurar timeout para ocultar loading automáticamente después de 1.5 segundos
     timeoutRef.current = setTimeout(() => {
       setCargando(false);
     }, 1500);
 
-    // Navegar a la ruta
     router.push(ruta);
   };
 
   const manejarLogout = async () => {
+    // Prevenir múltiples clicks
+    if (cargando) return;
+    
     setCargando(true);
+    cerrarMenuUsuario();
+    setMenuAbierto(false);
+    
     try {
-      await servidorApi.logout();
-      // limpiar localStorage si corresponde
+      console.log('🚪 Cerrando sesión...');
+      
+      // 1. Limpiar estado local PRIMERO
       localStorage.removeItem('auth_token');
       localStorage.removeItem('persona_data');
-
+      document.cookie = 'auth_token=; path=/; max-age=0';
+      
+      // 2. Actualizar estado React
       setUsuarioAutenticado(false);
       setPersonaData(null);
-      setAnchorEl(null);
-      setMenuAbierto(false);
-      router.push('/login');
+      
+      // 3. Disparar evento
+      window.dispatchEvent(new Event('logout'));
+      
+      // 4. Llamar al backend (sin esperar la respuesta)
+      servidorApi.logout().catch(err => {
+        console.warn('Error al notificar logout al servidor:', err);
+      });
+      
+      console.log('✅ Sesión cerrada localmente, redirigiendo...');
+      
+      // 5. Esperar un momento antes de redirigir
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // 6. Forzar recarga completa a login
+      window.location.href = '/login';
+      
     } catch (error) {
       console.error('Error en logout:', error);
-    } finally {
-      setCargando(false);
+      
+      // En caso de error, asegurar limpieza y redirigir igual
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('persona_data');
+      document.cookie = 'auth_token=; path=/; max-age=0';
+      
+      window.location.href = '/login';
     }
   };
 
@@ -168,7 +190,6 @@ useEffect(() => {
     setAnchorEl(null);
   };
 
-  // Construir lista de enlaces visibles (añadir historial solo si está autenticado)
   const enlacesVisibles = usuarioAutenticado
     ? [...enlacesBase, enlaceHistorial, enlaceDashboard]
     : enlacesBase;
@@ -198,7 +219,7 @@ useEffect(() => {
           {usuarioAutenticado ? (
             <>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Typography variant="body2" sx={{ mr: 2 }}>
+                <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
                   {personaData?.nombre_completo || 'Usuario'}
                 </Typography>
                 <IconButton onClick={abrirMenuUsuario} color="inherit">
@@ -209,8 +230,6 @@ useEffect(() => {
               </Box>
 
               <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={cerrarMenuUsuario}>
-               
-
                 <MenuItem onClick={manejarLogout}>
                   <ListItemIcon>
                     <Logout fontSize="small" />
