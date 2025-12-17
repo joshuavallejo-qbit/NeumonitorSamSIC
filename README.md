@@ -27,7 +27,7 @@ python model.py
 Ubicado dentro del directorio del proyecto:
 
 ``` bash
-streamlit run app.py
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Esto abrirá automáticamente la interfaz web en tu navegador.
@@ -176,7 +176,7 @@ NEXTAUTH_SECRET="tu_clave_aqui"
 Instalar dependencias:
 ``` bash
 cd backend
-pip install fastapi uvicorn tensorflow pillow python-multipart python-dotenv supabase email-validator
+pip install fastapi uvicorn tensorflow pillow python-multipart python-dotenv supabase email-validator gdown
 ```
 Iniciar el backend:
 ``` bash
@@ -198,3 +198,192 @@ Iniciar el frontend:
 ``` bash
 npm run dev
 ```
+
+# Modelo de Detección de Neumonía con MobileNetV2
+
+Este módulo implementa y entrena un modelo de **Deep Learning** para la **clasificación automática de radiografías de tórax** en dos clases:
+
+* **NORMAL**
+* **PNEUMONIA**
+
+El modelo está diseñado como **sistema de apoyo a la decisión médica**, no como reemplazo del diagnóstico clínico.
+
+---
+
+##  ¿Qué hace `model.py`?
+
+El archivo `model.py` realiza todo el flujo de entrenamiento y evaluación del modelo:
+
+### 1. Preparación de datos
+
+* Carga imágenes desde los directorios:
+
+  * `train/` (entrenamiento)
+  * `val/` (validación)
+  * `test/` (evaluación final)
+* Redimensiona las imágenes a **224×224**
+* Aplica **data augmentation** para mejorar la generalización:
+
+  * Rotaciones
+  * Zoom
+  * Volteos horizontales
+
+---
+
+### 2. Arquitectura del modelo
+
+Se utiliza **Transfer Learning** con **MobileNetV2**, una arquitectura optimizada y eficiente.
+
+**Estructura:**
+
+* MobileNetV2 preentrenada (congelada inicialmente)
+* Global Average Pooling
+* Capas densas personalizadas:
+
+  * Dense (256) + BatchNorm + Dropout
+  * Dense (128) + BatchNorm + Dropout
+* Capa de salida con **2 neuronas (softmax)**
+
+**Parámetros:**
+
+* Total: **2.62M**
+* Entrenables: **~362K**
+* No entrenables: **~2.25M**
+
+Esto reduce el sobreajuste y acelera el entrenamiento.
+
+---
+
+##  Fases de entrenamiento
+
+###  Fase 1 – Entrenamiento con base congelada
+
+* MobileNetV2 congelada
+* Solo se entrenan las capas finales
+* Objetivo: aprender patrones generales sin dañar pesos preentrenados
+
+✔️ Mejor época: **Época 5**
+✔️ `val_accuracy = 100%` (validación muy pequeña)
+
+---
+
+###  Fase 2 – Fine-tuning
+
+* Se descongelan las **últimas capas** de MobileNetV2
+* Learning rate más bajo (`1e-4`)
+* Permite ajustar características más específicas de radiografías
+
+✔️ Mejor época: **Época 18**
+✔️ `val_accuracy = 87.5%`
+
+---
+
+##  Interpretación de las gráficas
+
+###  Precisión (Accuracy)
+![alt text](training_history.png)
+
+* **Entrenamiento:** aumenta de forma estable hasta ~96%
+* **Validación:** presenta fluctuaciones fuertes
+
+ **Interpretación**:
+
+* La validación es pequeña (solo 16 imágenes), por eso:
+
+  * Cambios grandes entre épocas
+  * No representa error del modelo
+* La tendencia general es positiva
+
+---
+
+###  Pérdida (Loss)
+
+* **Training loss:** disminuye progresivamente → aprendizaje correcto
+* **Validation loss:** picos altos en algunas épocas
+
+ **Interpretación**:
+
+* Los picos indican imágenes difíciles o ambiguas
+* No invalida el modelo, es esperado con datasets pequeños
+
+---
+
+##  Matriz de Confusión
+![alt text](confusion_matrix.png)
+
+
+| Real \ Predicción | NORMAL | PNEUMONIA |
+| ----------------- | ------ | --------- |
+| **NORMAL**        | 189    | 45        |
+| **PNEUMONIA**     | 6      | 384       |
+
+### 🔍 Interpretación clínica:
+
+* **Verdaderos positivos (PNEUMONIA bien detectada):** 384
+* **Falsos negativos (PNEUMONIA → NORMAL):** 6  *(muy bajo)*
+* **Alta sensibilidad para neumonía**, lo cual es clave en medicina
+
+ El modelo **prioriza detectar neumonía**, incluso si eso implica algunos falsos positivos.
+
+---
+
+##  Evaluación final en Test Set
+
+* **Accuracy:** **91.83%**
+* **Loss:** **0.2402**
+* Total de imágenes evaluadas: **624**
+
+###  Reporte de clasificación
+
+| Clase     | Precision | Recall | F1-score |
+| --------- | --------- | ------ | -------- |
+| NORMAL    | 0.97      | 0.81   | 0.88     |
+| PNEUMONIA | 0.90      | 0.98   | 0.94     |
+
+ **Interpretación**:
+
+* Recall de **98% en neumonía** → casi todos los casos reales se detectan
+* Muy buen balance entre precisión y sensibilidad
+
+---
+
+##  Análisis del nivel de confianza
+
+El modelo también analiza la **confianza (probabilidad softmax)** de sus predicciones:
+
+* **Confianza promedio:** 93.55%
+* **Confianza mínima:** 50.91%
+* **Confianza máxima:** 99.99%
+* **Predicciones >90% confianza:** 81.41%
+* **Predicciones >95% confianza:** 69.55%
+
+###  Importante sobre la confianza
+
+> Un nivel de confianza menor al 80% **NO significa diagnóstico incorrecto**.
+
+La confianza indica:
+
+* Qué tan clara fue la diferencia entre clases
+* Ambigüedad visual en la imagen
+* Patrones sutiles o mixtos
+
+El modelo puede **acertar correctamente con 60–75%**, especialmente en imágenes difíciles.
+
+---
+
+##  Conclusión
+
+El modelo:
+
+* Aprende correctamente
+* Generaliza bien en test
+* Detecta neumonía con **alta sensibilidad**
+* Presenta métricas acordes a modelos clínicos de apoyo
+
+**Uso recomendado**:
+
+* Sistema de apoyo al diagnóstico
+* Priorización de atención médica
+* Evaluación preliminar automatizada
+
+**No reemplaza al médico**, pero es una herramienta confiable para detección temprana.
