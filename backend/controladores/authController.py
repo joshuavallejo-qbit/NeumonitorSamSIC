@@ -123,12 +123,20 @@ async def login(request: LoginRequest):
         # Buscar persona por email
         response = supabase.table("persona").select("*").eq("email", request.email).single().execute()
         
-        if hasattr(response, 'error') or not response.data:
+        if hasattr(response, 'error'):
+            logging.error(f"Error buscando usuario: {response.error.message}")
             raise HTTPException(
-                status_code=401,
-                detail="Credenciales inválidas"
+                status_code=500,
+                detail="Error interno del servidor"
             )
-        
+
+        if not response.data:
+            # Usuario no existe
+            raise HTTPException(
+                status_code=404,
+                detail="Usuario no encontrado, por favor regístrese"
+            )
+                
         persona = response.data
         
         # Verificar contrasenha
@@ -320,12 +328,20 @@ async def recuperar_password(request: RecuperarPasswordRequest):
         # Buscar persona por email
         response = supabase.table("persona").select("id, email, nombre_completo").eq("email", request.email).single().execute()
         
-        if hasattr(response, 'error') or not response.data:
+        if hasattr(response, 'error'):
+            logging.error(f"Error buscando usuario para recuperación: {response.error.message}")
+            raise HTTPException(
+                status_code=500,
+                detail="Error interno del servidor"
+            )
+
+        if not response.data:
             raise HTTPException(
                 status_code=404,
-                detail="No se encontró usuario con ese email"
+                detail="Usuario no encontrado, por favor regístrese"
             )
-        
+
+                
         persona = response.data
         persona_id = persona.get("id")
         
