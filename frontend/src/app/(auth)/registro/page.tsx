@@ -24,7 +24,9 @@ import {
   Card,
   CardContent,
   Divider,
-  Chip
+  Chip,
+  useTheme,
+  useMediaQuery
 } from '@mui/material';
 import { IconButton, InputAdornment } from '@mui/material';
 import { Visibility, VisibilityOff, Info, ArrowBack, ArrowForward } from '@mui/icons-material';
@@ -69,21 +71,25 @@ const opcionesZona = [
 ];
 
 const opcionesEconomica = [
-  { value: 'ingresos_limites', label: 'Ingresos limitados (dificultad para cubrir gastos médicos)' },
+  { value: 'ingresos_limites', label: 'Ingresos limitados' },
   { value: 'ingresos_moderados', label: 'Ingresos moderados' },
   { value: 'ingresos_estables', label: 'Ingresos estables' },
   { value: 'prefiero_no_responder', label: 'Prefiero no responder' }
 ];
 
 const opcionesAccesoSalud = [
-  { value: 'muy_dificil', label: 'Muy difícil (más de 1 hora de traslado)' },
+  { value: 'muy_dificil', label: 'Muy difícil' },
   { value: 'dificil', label: 'Difícil' },
   { value: 'acceso_moderado', label: 'Acceso moderado' },
   { value: 'facil_acceso', label: 'Fácil acceso' },
-  { value: 'atencion_privada', label: 'Atención privada frecuente' }
+  { value: 'atencion_privada', label: 'Atención privada' }
 ];
 
 export default function PaginaRegistro() {
+  const theme = useTheme();
+  const esMovil = useMediaQuery(theme.breakpoints.down('sm'));
+  const esTablet = useMediaQuery(theme.breakpoints.down('md'));
+  
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mostrarPassword, setMostrarPassword] = useState(false);
@@ -103,23 +109,20 @@ export default function PaginaRegistro() {
     formState: { errors, isValid },
     trigger
   } = useForm<FormularioRegistro>({
-  defaultValues: {
-    // Paso 2 (RADIOS)
-    tipo_zona: undefined,
-    situacion_economica: undefined,
-    acceso_salud: undefined,
-
-    // Paso 3
-    experiencias_covid: {
-      diagnosticado: false,
-      hospitalizado: false,
-      secuelas_respiratorias: false,
-      perdida_empleo: false,
-      sin_covid: false
-    }
-  },
-  mode: 'onChange'
-});
+    defaultValues: {
+      tipo_zona: undefined,
+      situacion_economica: undefined,
+      acceso_salud: undefined,
+      experiencias_covid: {
+        diagnosticado: false,
+        hospitalizado: false,
+        secuelas_respiratorias: false,
+        perdida_empleo: false,
+        sin_covid: false
+      }
+    },
+    mode: 'onChange'
+  });
 
   const password = watch('password');
 
@@ -134,7 +137,6 @@ export default function PaginaRegistro() {
         campos = ['fecha_nacimiento', 'tipo_zona', 'situacion_economica', 'acceso_salud'];
         break;
       case 2:
-        // El paso 3 no tiene validación obligatoria
         return true;
     }
     
@@ -204,64 +206,60 @@ export default function PaginaRegistro() {
 
     return { nivel, prioridad, factores, motivos, edad };
   };
-// En la función enviarRegistro, cambiar:
 
-const enviarRegistro = async (datos: FormularioRegistro) => {
-  setCargando(true);
-  setError(null);
+  const enviarRegistro = async (datos: FormularioRegistro) => {
+    setCargando(true);
+    setError(null);
 
-  try {
-    // VALIDACIÓN: Verificar que al menos una opción de COVID esté seleccionada
-    const experienciasSeleccionadas = Object.values(datos.experiencias_covid).some(v => v === true);
-    if (!experienciasSeleccionadas) {
-      setError('Debes seleccionar al menos una experiencia relacionada con COVID-19');
+    try {
+      const experienciasSeleccionadas = Object.values(datos.experiencias_covid).some(v => v === true);
+      if (!experienciasSeleccionadas) {
+        setError('Debes seleccionar al menos una experiencia relacionada con COVID-19');
+        setCargando(false);
+        return;
+      }
+
+      const vulnerabilidad = calcularVulnerabilidadPreliminar(datos);
+      setResultadoVulnerabilidad(vulnerabilidad);
+
+      const confirmar = window.confirm(
+        `¿Estás seguro de registrar tu cuenta?\n\n` +
+        `Nivel de vulnerabilidad calculado: ${vulnerabilidad?.nivel || 'BAJA'}\n` +
+        `Se registrarán tus respuestas para análisis médico.`
+      );
+      
+      if (!confirmar) {
+        setCargando(false);
+        return;
+      }
+
+      const datosRegistro = {
+        email: datos.email,
+        password: datos.password,
+        nombre_completo: datos.nombre_completo,
+        telefono: datos.telefono || '',
+        direccion: datos.direccion || '',
+        fecha_nacimiento: datos.fecha_nacimiento,
+        tipo_zona: datos.tipo_zona,
+        situacion_economica: datos.situacion_economica,
+        acceso_salud: datos.acceso_salud,
+        experiencias_covid: datos.experiencias_covid
+      };
+
+      const respuesta = await servidorApi.registro(datosRegistro as any);
+      
+      if (respuesta.exito) {
+        alert('Registro exitoso. Ahora inicia sesión.');
+        router.push('/login'); 
+      } else {
+        setError(respuesta.mensaje || 'Error al registrar usuario');
+      }
+    } catch (err) {
+      setError('Error al conectar con el servidor');
+    } finally {
       setCargando(false);
-      return;
     }
-
-    // Calcular vulnerabilidad preliminar para mostrar al usuario
-    const vulnerabilidad = calcularVulnerabilidadPreliminar(datos);
-    setResultadoVulnerabilidad(vulnerabilidad);
-
-    // Mostrar confirmación antes de enviar
-    const confirmar = window.confirm(
-      `¿Estás seguro de registrar tu cuenta?\n\n` +
-      `Nivel de vulnerabilidad calculado: ${vulnerabilidad?.nivel || 'BAJA'}\n` +
-      `Se registrarán tus respuestas para análisis médico.`
-    );
-    
-    if (!confirmar) {
-      setCargando(false);
-      return;
-    }
-
-    const datosRegistro = {
-      email: datos.email,
-      password: datos.password,
-      nombre_completo: datos.nombre_completo,
-      telefono: datos.telefono || '',
-      direccion: datos.direccion || '',
-      fecha_nacimiento: datos.fecha_nacimiento,
-      tipo_zona: datos.tipo_zona,
-      situacion_economica: datos.situacion_economica,
-      acceso_salud: datos.acceso_salud,
-      experiencias_covid: datos.experiencias_covid
-    };
-
-    const respuesta = await servidorApi.registro(datosRegistro as any);
-    
-    if (respuesta.exito) {
-      alert('Registro exitoso. Ahora inicia sesión.');
-      router.push('/login'); 
-    } else {
-      setError(respuesta.mensaje || 'Error al registrar usuario');
-    }
-  } catch (err) {
-    setError('Error al conectar con el servidor');
-  } finally {
-    setCargando(false);
-  }
-};
+  };
 
   // Renderizar paso actual
   const renderPaso = () => {
@@ -269,16 +267,16 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
       case 0:
         return (
           <Box sx={{ mt: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant={esMovil ? "subtitle1" : "h6"} gutterBottom fontWeight="bold">
               Información Personal
             </Typography>
             
-            <Grid container spacing={3}>
-                <Grid size={{ xs: 12}}>
-
+            <Grid container spacing={esMovil ? 2 : 3}>
+<Grid size={{ xs: 12}}>
                 <TextField
                   fullWidth
                   label="Nombre Completo"
+                  size={esMovil ? "small" : "medium"}
                   {...register('nombre_completo', {
                     required: 'El nombre es requerido',
                     minLength: {
@@ -291,11 +289,12 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                 />
               </Grid>
 
-              <Grid size={{ xs: 12 }}>
+<Grid size={{ xs: 12 }}>
                 <TextField
                   fullWidth
                   label="Correo Electrónico"
                   type="email"
+                  size={esMovil ? "small" : "medium"}
                   {...register('email', {
                     required: 'El correo es requerido',
                     pattern: {
@@ -309,10 +308,11 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                <TextField
                   fullWidth
                   label="Contraseña"
                   type={mostrarPassword ? 'text' : 'password'}
+                  size={esMovil ? "small" : "medium"}
                   {...register('password', {
                     required: 'La contraseña es requerida',
                     minLength: {
@@ -325,7 +325,11 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <IconButton onClick={toggleMostrarPassword} edge="end">
+                        <IconButton 
+                          onClick={toggleMostrarPassword} 
+                          edge="end"
+                          size={esMovil ? "small" : "medium"}
+                        >
                           {mostrarPassword ? <VisibilityOff /> : <Visibility />}
                         </IconButton>
                       </InputAdornment>
@@ -335,10 +339,11 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                <TextField
                   fullWidth
                   label="Confirmar Contraseña"
                   type={mostrarConfirmPassword ? 'text' : 'password'}
+                  size={esMovil ? "small" : "medium"}
                   {...register('confirmarPassword', {
                     required: 'Confirma tu contraseña',
                     validate: (value) =>
@@ -349,7 +354,11 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
-                        <IconButton onClick={toggleMostrarConfirmPassword} edge="end">
+                        <IconButton 
+                          onClick={toggleMostrarConfirmPassword} 
+                          edge="end"
+                          size={esMovil ? "small" : "medium"}
+                        >
                           {mostrarConfirmPassword ? <VisibilityOff /> : <Visibility />}
                         </IconButton>
                       </InputAdornment>
@@ -359,17 +368,21 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                <TextField
+                required
                   fullWidth
                   label="Teléfono"
+                  size={esMovil ? "small" : "medium"}
                   {...register('telefono')}
                 />
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+                <TextField
+                required
                   fullWidth
                   label="Dirección"
+                  size={esMovil ? "small" : "medium"}
                   {...register('direccion')}
                 />
               </Grid>
@@ -380,19 +393,20 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
       case 1:
         return (
           <Box sx={{ mt: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant={esMovil ? "subtitle1" : "h6"} gutterBottom fontWeight="bold">
               Información Demográfica
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            <Typography variant={esMovil ? "body2" : "body1"} color="text.secondary" sx={{ mb: 3 }}>
               Esta información nos ayuda a priorizar y entender el impacto social post-pandemia.
             </Typography>
             
-            <Grid container spacing={3}>
-<Grid size={{ xs: 12, md: 6 }}>
-                  <TextField
+            <Grid container spacing={esMovil ? 2 : 3}>
+<Grid size={{ xs: 12 }}>
+                <TextField
                   fullWidth
                   label="Fecha de Nacimiento"
                   type="date"
+                  size={esMovil ? "small" : "medium"}
                   InputLabelProps={{ shrink: true }}
                   {...register('fecha_nacimiento', {
                     required: 'La fecha de nacimiento es requerida'
@@ -403,20 +417,26 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl component="fieldset" fullWidth>
-                  <FormLabel component="legend">¿En qué tipo de zona resides actualmente?</FormLabel>
+                <FormControl component="fieldset" fullWidth>
+                  <FormLabel component="legend" sx={{ fontSize: esMovil ? '0.875rem' : '1rem' }}>
+                    ¿En qué tipo de zona resides?
+                  </FormLabel>
                   <Controller
                     name="tipo_zona"
                     control={control}
                     rules={{ required: 'Este campo es requerido' }}
                     render={({ field }) => (
-<RadioGroup {...field} value={field.value ?? ''}>
+                      <RadioGroup {...field} value={field.value ?? ''}>
                         {opcionesZona.map((opcion) => (
                           <FormControlLabel
                             key={opcion.value}
                             value={opcion.value}
-                            control={<Radio />}
-                            label={opcion.label}
+                            control={<Radio size={esMovil ? "small" : "medium"} />}
+                            label={
+                              <Typography variant={esMovil ? "caption" : "body2"}>
+                                {esMovil ? opcion.label.split('(')[0] : opcion.label}
+                              </Typography>
+                            }
                           />
                         ))}
                       </RadioGroup>
@@ -431,20 +451,26 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Grid>
 
 <Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl component="fieldset" fullWidth>
-                  <FormLabel component="legend">¿Cómo describirías tu situación económica actual?</FormLabel>
+                <FormControl component="fieldset" fullWidth>
+                  <FormLabel component="legend" sx={{ fontSize: esMovil ? '0.875rem' : '1rem' }}>
+                    Situación económica
+                  </FormLabel>
                   <Controller
                     name="situacion_economica"
                     control={control}
                     rules={{ required: 'Este campo es requerido' }}
                     render={({ field }) => (
-<RadioGroup {...field} value={field.value ?? ''}>
+                      <RadioGroup {...field} value={field.value ?? ''}>
                         {opcionesEconomica.map((opcion) => (
                           <FormControlLabel
                             key={opcion.value}
                             value={opcion.value}
-                            control={<Radio />}
-                            label={opcion.label}
+                            control={<Radio size={esMovil ? "small" : "medium"} />}
+                            label={
+                              <Typography variant={esMovil ? "caption" : "body2"}>
+                                {esMovil ? opcion.label.split('(')[0] : opcion.label}
+                              </Typography>
+                            }
                           />
                         ))}
                       </RadioGroup>
@@ -458,21 +484,27 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                 </FormControl>
               </Grid>
 
-<Grid size={{ xs: 12, md: 6 }}>
-                  <FormControl component="fieldset" fullWidth>
-                  <FormLabel component="legend">¿Qué tan fácil es para ti acceder a un centro de salud?</FormLabel>
+<Grid size={{ xs: 12 }}>
+                <FormControl component="fieldset" fullWidth>
+                  <FormLabel component="legend" sx={{ fontSize: esMovil ? '0.875rem' : '1rem' }}>
+                    Acceso a salud
+                  </FormLabel>
                   <Controller
                     name="acceso_salud"
                     control={control}
                     rules={{ required: 'Este campo es requerido' }}
                     render={({ field }) => (
-<RadioGroup {...field} value={field.value ?? ''}>
+                      <RadioGroup {...field} value={field.value ?? ''}>
                         {opcionesAccesoSalud.map((opcion) => (
                           <FormControlLabel
                             key={opcion.value}
                             value={opcion.value}
-                            control={<Radio />}
-                            label={opcion.label}
+                            control={<Radio size={esMovil ? "small" : "medium"} />}
+                            label={
+                              <Typography variant={esMovil ? "caption" : "body2"}>
+                                {esMovil ? opcion.label.split('(')[0] : opcion.label}
+                              </Typography>
+                            }
                           />
                         ))}
                       </RadioGroup>
@@ -492,12 +524,11 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
       case 2:
         return (
           <Box sx={{ mt: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            <Typography variant={esMovil ? "subtitle1" : "h6"} gutterBottom fontWeight="bold">
               Experiencias durante la pandemia COVID-19
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Durante la pandemia de COVID-19 (2020–2021), ¿tuviste alguna de las siguientes experiencias?
-              (Selección múltiple)
+            <Typography variant={esMovil ? "body2" : "body1"} color="text.secondary" sx={{ mb: 3 }}>
+              Durante la pandemia (2020–2021), ¿tuviste alguna de estas experiencias?
             </Typography>
             
             <FormControl component="fieldset" fullWidth>
@@ -506,92 +537,73 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                 control={control}
                 render={({ field }) => (
                   <FormGroup>
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={field.value.diagnosticado}
-                          onChange={(e) => field.onChange({
-                            ...field.value,
-                            diagnosticado: e.target.checked
-                          })}
-                        />
-                      }
-                      label="Fui diagnosticado/a con COVID-19"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={field.value.hospitalizado}
-                          onChange={(e) => field.onChange({
-                            ...field.value,
-                            hospitalizado: e.target.checked
-                          })}
-                        />
-                      }
-                      label="Fui hospitalizado/a por COVID-19"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={field.value.secuelas_respiratorias}
-                          onChange={(e) => field.onChange({
-                            ...field.value,
-                            secuelas_respiratorias: e.target.checked
-                          })}
-                        />
-                      }
-                      label="Presenté secuelas respiratorias después del COVID-19"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={field.value.perdida_empleo}
-                          onChange={(e) => field.onChange({
-                            ...field.value,
-                            perdida_empleo: e.target.checked
-                          })}
-                        />
-                      }
-                      label="Perdí mi empleo o ingresos por la pandemia"
-                    />
-                    <FormControlLabel
-                      control={
-                        <Checkbox
-                          checked={field.value.sin_covid}
-                          onChange={(e) => field.onChange({
-                            ...field.value,
-                            sin_covid: e.target.checked
-                          })}
-                        />
-                      }
-                      label="No presenté COVID-19 ni secuelas conocidas"
-                    />
+                    {[
+                      { key: 'diagnosticado', label: 'Fui diagnosticado/a con COVID-19' },
+                      { key: 'hospitalizado', label: 'Fui hospitalizado/a por COVID-19' },
+                      { key: 'secuelas_respiratorias', label: 'Tuve secuelas respiratorias' },
+                      { key: 'perdida_empleo', label: 'Perdí mi empleo o ingresos' },
+                      { key: 'sin_covid', label: 'No tuve COVID-19 ni secuelas' }
+                    ].map((item) => (
+                      <FormControlLabel
+                        key={item.key}
+                        control={
+                          <Checkbox
+                            size={esMovil ? "small" : "medium"}
+                            checked={field.value[item.key as keyof typeof field.value]}
+                            onChange={(e) => field.onChange({
+                              ...field.value,
+                              [item.key]: e.target.checked
+                            })}
+                          />
+                        }
+                        label={
+                          <Typography variant={esMovil ? "caption" : "body2"}>
+                            {item.label}
+                          </Typography>
+                        }
+                      />
+                    ))}
                   </FormGroup>
                 )}
               />
             </FormControl>
-<Box sx={{ mt: 2, mb: 2 }}>
-  <Alert severity="info">
-    <Typography variant="body2">
-      <strong>Nota:</strong> Debes seleccionar al menos una opción relacionada con COVID-19 para continuar.
-    </Typography>
-  </Alert>
-</Box>
-            {/* Vista previa de vulnerabilidad */}
+
+            <Box sx={{ mt: 2, mb: 2 }}>
+              <Alert 
+                severity="info" 
+                sx={{ 
+                  py: esMovil ? 1 : 2,
+                  '& .MuiAlert-message': { fontSize: esMovil ? '0.75rem' : '0.875rem' }
+                }}
+              >
+                <strong>Nota:</strong> Selecciona al menos una opción relacionada con COVID-19.
+              </Alert>
+            </Box>
+
             {resultadoVulnerabilidad && (
-              <Card sx={{ mt: 3, bgcolor: 'background.default' }}>
-                <CardContent>
-                  <Typography variant="subtitle1" gutterBottom fontWeight="bold">
+              <Card sx={{ 
+                mt: 3, 
+                bgcolor: 'background.default',
+                boxShadow: esMovil ? 1 : 2
+              }}>
+                <CardContent sx={{ p: esMovil ? 2 : 3 }}>
+                  <Typography variant="subtitle2" gutterBottom fontWeight="bold">
                     🎯 Evaluación Preliminar de Vulnerabilidad
                   </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexDirection: esMovil ? 'column' : 'row',
+                    alignItems: esMovil ? 'flex-start' : 'center',
+                    gap: esMovil ? 1 : 2, 
+                    mb: 2 
+                  }}>
                     <Chip
                       label={`Nivel: ${resultadoVulnerabilidad.nivel}`}
                       color={
                         resultadoVulnerabilidad.nivel === 'ALTA' ? 'error' :
                         resultadoVulnerabilidad.nivel === 'MEDIA' ? 'warning' : 'success'
                       }
-                      size="medium"
+                      size={esMovil ? "small" : "medium"}
                     />
                     <Chip
                       label={`Prioridad: ${resultadoVulnerabilidad.prioridad}`}
@@ -600,10 +612,10 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                         resultadoVulnerabilidad.prioridad === 'MEDIA' ? 'warning' : 'success'
                       }
                       variant="outlined"
-                      size="medium"
+                      size={esMovil ? "small" : "medium"}
                     />
                   </Box>
-                  <Typography variant="body2">
+                  <Typography variant={esMovil ? "caption" : "body2"}>
                     Factores de riesgo identificados: {resultadoVulnerabilidad.factores}
                   </Typography>
                   {resultadoVulnerabilidad.motivos.length > 0 && (
@@ -617,8 +629,19 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
               </Card>
             )}
 
-            <Alert severity="info" sx={{ mt: 3 }}>
-              <Info sx={{ mr: 1, verticalAlign: 'middle' }} />
+            <Alert 
+              severity="info" 
+              sx={{ 
+                mt: 3,
+                py: esMovil ? 1 : 2,
+                '& .MuiAlert-message': { fontSize: esMovil ? '0.75rem' : '0.875rem' }
+              }}
+            >
+              <Info sx={{ 
+                mr: 1, 
+                verticalAlign: 'middle',
+                fontSize: esMovil ? '1rem' : '1.25rem'
+              }} />
               Esta información nos ayuda a brindarte un mejor servicio y priorizar la atención según tu perfil.
             </Alert>
           </Box>
@@ -630,27 +653,67 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
   };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 6, mb: 6 }}>
-      <Paper elevation={3} sx={{ p: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom align="center">
+    <Container 
+      maxWidth="md" 
+      sx={{ 
+        mt: esMovil ? 2 : 6, 
+        mb: esMovil ? 2 : 6,
+        px: esMovil ? 1 : 2
+      }}
+    >
+      <Paper 
+        elevation={esMovil ? 1 : 3} 
+        sx={{ 
+          p: esMovil ? 2 : 4,
+          borderRadius: esMovil ? 2 : 3
+        }}
+      >
+        <Typography 
+          variant={esMovil ? "h5" : "h4"} 
+          component="h1" 
+          gutterBottom 
+          align="center"
+          sx={{ fontWeight: 'bold' }}
+        >
           Crear Cuenta
         </Typography>
         
-        <Typography variant="body1" color="text.secondary" align="center" sx={{ mb: 4 }}>
+        <Typography 
+          variant={esMovil ? "body2" : "body1"} 
+          color="text.secondary" 
+          align="center" 
+          sx={{ mb: 4 }}
+        >
           Regístrate para acceder al sistema de detección de neumonía
         </Typography>
 
-        {/* Stepper */}
-        <Stepper activeStep={pasoActivo} sx={{ mb: 4 }}>
+        {/* Stepper Responsivo */}
+        <Stepper 
+          activeStep={pasoActivo} 
+          sx={{ 
+            mb: 4,
+            '& .MuiStepLabel-label': {
+              fontSize: esMovil ? '0.7rem' : '0.875rem'
+            }
+          }}
+          orientation={esMovil ? "vertical" : "horizontal"}
+        >
           {steps.map((label) => (
             <Step key={label}>
-              <StepLabel>{label}</StepLabel>
+              <StepLabel>{esMovil ? label.split(' ')[0] : label}</StepLabel>
             </Step>
           ))}
         </Stepper>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 3 }}>
+          <Alert 
+            severity="error" 
+            sx={{ 
+              mb: 3,
+              py: esMovil ? 1 : 2,
+              '& .MuiAlert-message': { fontSize: esMovil ? '0.75rem' : '0.875rem' }
+            }}
+          >
             {error}
           </Alert>
         )}
@@ -659,14 +722,22 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
           {renderPaso()}
           
           {/* Navegación entre pasos */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+          <Box sx={{ 
+            display: 'flex', 
+            flexDirection: esMovil ? 'column' : 'row',
+            justifyContent: 'space-between', 
+            gap: esMovil ? 2 : 0,
+            mt: 4 
+          }}>
             <Button
               variant="outlined"
               startIcon={<ArrowBack />}
               onClick={pasoAnterior}
               disabled={pasoActivo === 0 || cargando}
+              fullWidth={esMovil}
+              size={esMovil ? "small" : "medium"}
             >
-              Anterior
+              {esMovil ? 'Atrás' : 'Anterior'}
             </Button>
             
             {pasoActivo < steps.length - 1 ? (
@@ -675,24 +746,28 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
                 endIcon={<ArrowForward />}
                 onClick={siguientePaso}
                 disabled={cargando}
+                fullWidth={esMovil}
+                size={esMovil ? "small" : "medium"}
+                sx={esMovil ? { mt: 1 } : {}}
               >
-                Siguiente
+                {esMovil ? 'Siguiente' : 'Siguiente'}
               </Button>
             ) : (
-<Button
-  type="submit"
-  variant="contained"
-  disabled={
-    cargando ||
-    !Object.values(watch('experiencias_covid')).some(v => v === true)
-  }
-  sx={{ minWidth: 120 }}
->
-
+              <Button
+                type="submit"
+                variant="contained"
+                disabled={
+                  cargando ||
+                  !Object.values(watch('experiencias_covid')).some(v => v === true)
+                }
+                fullWidth={esMovil}
+                size={esMovil ? "small" : "medium"}
+                sx={esMovil ? { mt: 1 } : { minWidth: 120 }}
+              >
                 {cargando ? (
-                  <CircularProgress size={24} color="inherit" />
+                  <CircularProgress size={esMovil ? 20 : 24} color="inherit" />
                 ) : (
-                  'Completar Registro'
+                  esMovil ? 'Registrar' : 'Completar Registro'
                 )}
               </Button>
             )}
@@ -701,12 +776,20 @@ const enviarRegistro = async (datos: FormularioRegistro) => {
 
         <Divider sx={{ my: 3 }} />
         
-        <Typography variant="body2" color="text.secondary" align="center">
+        <Typography 
+          variant={esMovil ? "caption" : "body2"} 
+          color="text.secondary" 
+          align="center"
+        >
           ¿Ya tienes cuenta?{' '}
           <Button
             variant="text"
-            size="small"
+            size={esMovil ? "small" : "medium"}
             onClick={() => router.push('/login')}
+            sx={{ 
+              minWidth: 'auto',
+              p: esMovil ? 0.5 : 1
+            }}
           >
             Inicia sesión aquí
           </Button>
