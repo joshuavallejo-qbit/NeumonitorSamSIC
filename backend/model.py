@@ -1,19 +1,21 @@
-import matplotlib.pyplot as plt
+# Importación de librerías principales
+import matplotlib.pyplot as plt  # Para graficar curvas de entrenamiento y matriz de confusión
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.applications import MobileNetV2  # Modelo preentrenado para transfer learning
 import os
-import numpy as np
+import numpy as np  # Para manipulación de arreglos y cálculos numéricos
 
-# CONFIGURACIÓN DE RUTAS
 
-train_dir = r'../chest_xray/train'
-val_dir = r'../chest_xray/val'
-test_dir = r'../chest_xray/test'
+# CONFIGURACIÓN DE RUTAS DEL DATASET
 
-batch_size = 16  # Reducido para mejor aprendizaje
-img_height = 224
-img_width = 224
+train_dir = r'../chest_xray/train'  # Carpeta con imágenes de entrenamiento
+val_dir = r'../chest_xray/val'      # Carpeta con imágenes de validación
+test_dir = r'../chest_xray/test'    # Carpeta con imágenes de prueba
+
+batch_size = 16  # Tamaño del batch (cantidad de imágenes por iteración)
+img_height = 224  # Altura de la imagen para entrada del modelo
+img_width = 224   # Ancho de la imagen para entrada del modelo
 
 
 # CARGA DEL DATASET
@@ -21,11 +23,11 @@ img_width = 224
 print("Cargando set de entrenamiento...")
 train_ds = tf.keras.utils.image_dataset_from_directory(
     train_dir,
-    seed=123,
-    label_mode='int',
-    image_size=(img_height, img_width),
+    seed=123,  # Semilla para reproducibilidad
+    label_mode='int',  # Etiquetas como enteros
+    image_size=(img_height, img_width),  # Redimensionar imágenes
     batch_size=batch_size,
-    shuffle=True
+    shuffle=True  # Mezclar datos
 )
 
 print("Cargando set de validación...")
@@ -38,6 +40,7 @@ val_ds = tf.keras.utils.image_dataset_from_directory(
     shuffle=False
 )
 
+# Obtener nombres de clases y cantidad de clases
 class_names = train_ds.class_names
 num_classes = len(class_names)
 print(f"Clases encontradas: {class_names}")
@@ -45,6 +48,7 @@ print(f"Clases encontradas: {class_names}")
 
 # OPTIMIZACIÓN DEL PIPELINE
 
+# Cache y prefetch permiten acelerar el entrenamiento evitando cuellos de botella
 AUTOTUNE = tf.data.AUTOTUNE
 train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
 val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
@@ -52,13 +56,14 @@ val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
 # DATA AUGMENTATION MEJORADO
 
+# Aplicar transformaciones aleatorias para mejorar la generalización
 data_augmentation = tf.keras.Sequential([
     layers.RandomFlip("horizontal"),
     layers.RandomRotation(0.2),
     layers.RandomZoom(0.2),
     layers.RandomContrast(0.25),
     layers.RandomBrightness(0.25),
-    layers.RandomTranslation(0.1, 0.1),  # Nuevo: traslación
+    layers.RandomTranslation(0.1, 0.1),  # Traslación horizontal y vertical
 ], name="data_augmentation")
 
 
@@ -66,24 +71,23 @@ data_augmentation = tf.keras.Sequential([
 
 base_model = MobileNetV2(
     input_shape=(img_height, img_width, 3),
-    include_top=False,
-    weights="imagenet"
+    include_top=False,  # Quitamos la capa superior para agregar nuestras propias capas
+    weights="imagenet"  # Pesos preentrenados en ImageNet
 )
 
-# CLAVE: Descongelar las últimas capas para fine-tuning
-base_model.trainable = False  # Inicialmente congelado
+base_model.trainable = False  # Congelar base inicialmente para entrenamiento seguro
 
 
-# MODELO FINAL CON MÁS CAPACIDAD
+# CONSTRUCCIÓN DEL MODELO FINAL
 
 inputs = layers.Input(shape=(img_height, img_width, 3))
-x = data_augmentation(inputs)
-x = layers.Rescaling(1./255)(x)
+x = data_augmentation(inputs)  # Aplicar augmentations
+x = layers.Rescaling(1./255)(x)  # Normalizar imágenes a [0,1]
 
-x = base_model(x, training=False)
-x = layers.GlobalAveragePooling2D()(x)
+x = base_model(x, training=False)  # Extraer features con MobileNetV2
+x = layers.GlobalAveragePooling2D()(x)  # Convertir feature maps a vector
 
-# Capas densas adicionales para mejor aprendizaje
+# Capas densas adicionales
 x = layers.Dense(256, activation='relu', name='dense_1')(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.5)(x)
@@ -99,17 +103,21 @@ model = models.Model(inputs, outputs)
 
 # COMPILACIÓN INICIAL
 
+# Optimizer Adam, función de pérdida para clasificación multi-clase
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
 
-model.summary()
+model.summary()  # Mostrar arquitectura y parámetros
 
 
-# CALLBACKS MEJORADOS
+# CALLBACKS PARA ENTRENAMIENTO
 
+# EarlyStopping: detener si no mejora validación
+# ReduceLROnPlateau: reducir learning rate si estancamiento
+# ModelCheckpoint: guardar mejor modelo
 callbacks_phase1 = [
     tf.keras.callbacks.EarlyStopping(
         monitor='val_accuracy',
@@ -155,16 +163,15 @@ print("\n" + "="*60)
 print("FASE 2: Fine-tuning (descongelando últimas capas)")
 print("="*60)
 
-# Descongelar las últimas 50 capas de MobileNetV2
+# Descongelar solo últimas 50 capas para fine-tuning
 base_model.trainable = True
 fine_tune_at = len(base_model.layers) - 50
-
 for layer in base_model.layers[:fine_tune_at]:
     layer.trainable = False
 
-# Recompilar con learning rate MUY bajo
+# Recompilar con learning rate más bajo
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),  # 10x más bajo
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
@@ -204,7 +211,7 @@ history2 = model.fit(
 print("\n¡Entrenamiento finalizado!")
 
 
-# COMBINAR HISTORIALES
+# COMBINAR HISTORIALES DE ENTRENAMIENTO
 
 acc = history1.history['accuracy'] + history2.history['accuracy']
 val_acc = history1.history['val_accuracy'] + history2.history['val_accuracy']
@@ -212,12 +219,13 @@ loss = history1.history['loss'] + history2.history['loss']
 val_loss = history1.history['val_loss'] + history2.history['val_loss']
 
 
-# GRÁFICAS DE ENTRENAMIENTO
+# GRAFICAR ENTRENAMIENTO
 
 epochs_range = range(len(acc))
 
 plt.figure(figsize=(14, 6))
 
+# Precisión
 plt.subplot(1, 2, 1)
 plt.plot(epochs_range, acc, label='Entrenamiento', linewidth=2)
 plt.plot(epochs_range, val_acc, label='Validación', linewidth=2)
@@ -228,6 +236,7 @@ plt.xlabel('Época')
 plt.ylabel('Accuracy')
 plt.grid(True, alpha=0.3)
 
+# Pérdida
 plt.subplot(1, 2, 2)
 plt.plot(epochs_range, loss, label='Entrenamiento', linewidth=2)
 plt.plot(epochs_range, val_loss, label='Validación', linewidth=2)
@@ -243,7 +252,7 @@ plt.savefig('training_history.png', dpi=300, bbox_inches='tight')
 plt.show()
 
 
-# EVALUACIÓN DETALLADA EN TEST SET
+# EVALUACIÓN EN TEST SET
 
 print("\n" + "="*60)
 print("EVALUACIÓN EN TEST SET")
@@ -262,11 +271,7 @@ print(f"\nTest Accuracy: {test_acc*100:.2f}%")
 print(f"Test Loss: {test_loss:.4f}")
 
 
-# ANÁLISIS DE CONFIANZA
-
-print("\n" + "="*60)
-print("ANÁLISIS DE CONFIANZA EN PREDICCIONES")
-print("="*60)
+# ANÁLISIS DE CONFIANZA EN PREDICCIONES
 
 y_true = []
 y_pred_probs = []
@@ -287,7 +292,7 @@ print(f"Predicciones con >90% confianza: {np.sum(confidences > 0.9) / len(confid
 print(f"Predicciones con >95% confianza: {np.sum(confidences > 0.95) / len(confidences) * 100:.2f}%")
 
 
-# MATRIZ DE CONFUSIÓN
+# MATRIZ DE CONFUSIÓN Y REPORTE
 
 from sklearn.metrics import confusion_matrix, classification_report
 import seaborn as sns

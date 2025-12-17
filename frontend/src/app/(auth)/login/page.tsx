@@ -20,7 +20,7 @@ import { useRouter } from 'next/navigation';
 import ModalRecuperarPassword from '@/components/ModalRecuperarPassword';
 import { IconButton, InputAdornment } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
-
+import { RespuestaApi } from '@/types/tipos';
 export default function PaginaLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -40,30 +40,34 @@ const toggleMostrarPassword = () => {
       router.push('/dashboard');
     }
   }, [router]);
+const manejarSubmit = async (event: React.FormEvent) => {
+  event.preventDefault();
+  setCargando(true);
+  setError(null);
 
-  const manejarSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setCargando(true);
-    setError(null);
+  try {
+    const respuesta: RespuestaApi = await servidorApi.login(email, password);
 
-    try {
-      const respuesta = await servidorApi.login(email, password);
-      
-      if (respuesta.exito) {
-        // Disparar evento de login para que useAuth se actualice
-        window.dispatchEvent(new Event('login'));
-        
-        // Redirigir a dashboard
-        router.push('/dashboard');
-      } else {
-        setError(respuesta.mensaje || 'Error en el inicio de sesión');
-        setCargando(false);
-      }
-    } catch (err: any) {
-      setError('Error de conexión con el servidor');
+    if (respuesta.exito) { // <-- cambió success -> exito
+      window.dispatchEvent(new Event('login'));
+      router.push('/dashboard');
+    } else {
+      setError(respuesta.mensaje || 'Error en el inicio de sesión'); // <-- cambió message -> mensaje
       setCargando(false);
     }
-  };
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      setError('Usuario no encontrado, por favor regístrese');
+    } else if (err.response?.status === 401) {
+      setError('Credenciales inválidas');
+    } else {
+      setError('Error de conexión con el servidor');
+    }
+    setCargando(false);
+  }
+};
+
+
 
   const abrirModalRecuperar = () => {
     setModalRecuperarAbierto(true);
