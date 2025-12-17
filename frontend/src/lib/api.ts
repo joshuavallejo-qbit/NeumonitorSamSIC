@@ -1,19 +1,19 @@
-// frontend/src/lib/api.ts - .
+// frontend/src/lib/api.ts
 import axios from 'axios';
 import { RespuestaApi } from '@/types/tipos';
 
 const clienteApi = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   timeout: 30000,
-  withCredentials: true,  // Permite enviar cookies/tokens
+  withCredentials: true,
 });
-// Configuración específica para el interceptor
+
 clienteApi.defaults.headers.common['Content-Type'] = 'application/json';
 clienteApi.defaults.headers.common['Accept'] = 'application/json';
-// Interceptor para agregar token a las solicitudes
+
+// Interceptor para agregar token
 clienteApi.interceptors.request.use(
   (config) => {
-    // Solo agregar token si estamos en el cliente
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('auth_token');
       if (token) {
@@ -25,12 +25,11 @@ clienteApi.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores de autenticación
+// Interceptor para manejar errores
 clienteApi.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Solo redirigir si no está en login/registro
       if (typeof window !== 'undefined' && 
           !window.location.pathname.includes('/login') && 
           !window.location.pathname.includes('/registro')) {
@@ -43,7 +42,6 @@ clienteApi.interceptors.response.use(
   }
 );
 
-// Función para manejar errores de API
 const manejarErrorApi = (error: any): RespuestaApi => {
   console.error('Error API:', error);
   
@@ -66,50 +64,72 @@ const manejarErrorApi = (error: any): RespuestaApi => {
 };
 
 export const servidorApi = {
-  // Autenticación
+  // CORRECCIÓN PRINCIPAL: Login mejorado
   login: async (email: string, password: string): Promise<RespuestaApi> => {
     try {
       const respuesta = await clienteApi.post('/auth/login', { email, password });
       
+      // Verificar estructura de respuesta
       if (respuesta.data.success && respuesta.data.data?.token) {
-        localStorage.setItem('auth_token', respuesta.data.data.token);
-        localStorage.setItem('persona_data', JSON.stringify(respuesta.data.data.persona));
+        const token = respuesta.data.data.token;
+        const persona = respuesta.data.data.persona;
+        
+        // Guardar en localStorage
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('persona_data', JSON.stringify(persona));
+        
+        // NUEVO: Guardar en cookies para el middleware
+        document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Lax`;
+        
+        return { 
+          exito: true, 
+          datos: respuesta.data,
+          mensaje: respuesta.data.message
+        };
       }
-      return { 
-        exito: true, 
-        datos: respuesta.data,
-        mensaje: respuesta.data.message
+      
+      return {
+        exito: false,
+        mensaje: 'Respuesta inválida del servidor'
       };
     } catch (error: any) {
       return manejarErrorApi(error);
     }
   },
 
-  registro: async (datos: {email: string, password: string, nombre_completo: string, telefono?: string, direccion?: string}): Promise<RespuestaApi> => {
-try {
-    const respuesta = await clienteApi.post('/auth/registro', datos);
-    // No guardar token aquí
-    return { 
-      exito: true, 
-      datos: respuesta.data 
-    };
-  } catch (error: any) {
-    return manejarErrorApi(error);
-  }
-},
+  registro: async (datos: {
+    email: string, 
+    password: string, 
+    nombre_completo: string, 
+    telefono?: string, 
+    direccion?: string
+  }): Promise<RespuestaApi> => {
+    try {
+      const respuesta = await clienteApi.post('/auth/registro', datos);
+      return { 
+        exito: true, 
+        datos: respuesta.data 
+      };
+    } catch (error: any) {
+      return manejarErrorApi(error);
+    }
+  },
 
   logout: async (): Promise<RespuestaApi> => {
     try {
       await clienteApi.post('/auth/logout');
       localStorage.removeItem('auth_token');
       localStorage.removeItem('persona_data');
+      
+      // NUEVO: Eliminar cookie
+      document.cookie = 'auth_token=; path=/; max-age=0';
+      
       return { exito: true };
     } catch (error: any) {
       return manejarErrorApi(error);
     }
   },
 
-  // Análisis público (sin autenticación)
   predecir: async (archivoImagen: File): Promise<RespuestaApi> => {
     try {
       const formData = new FormData();
@@ -127,7 +147,6 @@ try {
     }
   },
 
-  // Análisis protegido (con autenticación)
   subirAnalisis: async (archivoImagen: File, comentarios?: string): Promise<RespuestaApi> => {
     try {
       const formData = new FormData();
@@ -148,7 +167,6 @@ try {
     }
   },
 
-  // Obtener historial de análisis
   obtenerHistorial: async (): Promise<RespuestaApi> => {
     try {
       const respuesta = await clienteApi.get('/analisis/historial');
@@ -161,7 +179,6 @@ try {
     }
   },
 
-  // Verificar salud del sistema
   salud: async (): Promise<RespuestaApi> => {
     try {
       const respuesta = await clienteApi.get('/salud');
@@ -177,7 +194,6 @@ try {
     }
   },
 
-  // Obtener perfil de persona
   obtenerPerfil: async (): Promise<RespuestaApi> => {
     try {
       const respuesta = await clienteApi.get('/persona/perfil');
@@ -190,7 +206,6 @@ try {
     }
   },
 
-  // Verificar sesión
   verificarSesion: async (): Promise<RespuestaApi> => {
     try {
       const respuesta = await clienteApi.get('/auth/verificar-sesion');
