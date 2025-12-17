@@ -1,4 +1,4 @@
-// frontend/src/app/(auth)/login/page.tsx
+// frontend/src/app/(auth)/login/page.tsx - CORREGIDO
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -11,10 +11,10 @@ import {
   Box,
   Alert,
   CircularProgress,
+  IconButton,
+  InputAdornment
 } from '@mui/material';
-import { IconButton, InputAdornment } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
-
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { servidorApi } from '@/lib/api';
@@ -28,13 +28,9 @@ interface FormularioLogin {
 export default function PaginaLogin() {
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
   const [verificandoSesion, setVerificandoSesion] = useState(true);
-const [mostrarPassword, setMostrarPassword] = useState(false);
-const [mostrarConfirmPassword, setMostrarConfirmPassword] = useState(false);
-
-const toggleMostrarPassword = () => setMostrarPassword(!mostrarPassword);
-const toggleMostrarConfirmPassword = () => setMostrarConfirmPassword(!mostrarConfirmPassword);
+  const [mostrarPassword, setMostrarPassword] = useState(false);
+  const router = useRouter();
 
   const {
     register,
@@ -42,48 +38,63 @@ const toggleMostrarConfirmPassword = () => setMostrarConfirmPassword(!mostrarCon
     formState: { errors },
   } = useForm<FormularioLogin>();
 
+  useEffect(() => {
+    if (serviciosAuth.verificarAutenticacion()) {
+      router.replace('/dashboard');
+    } else {
+      setVerificandoSesion(false);
+    }
+  }, [router]);
+
   const enviarLogin = async (datos: FormularioLogin) => {
     setCargando(true);
     setError(null);
 
     try {
+      console.log('🔐 Intentando login con:', datos.email);
+      
       const respuesta = await servidorApi.login(datos.email, datos.password);
-      if (respuesta.exito && respuesta.datos) {
-  const datosApi = respuesta.datos.data; // según tu backend
-  const token = datosApi.token;
-  const usuario = datosApi.persona;
+      
+      console.log('📥 Respuesta del servidor:', respuesta);
+      
+      if (respuesta.exito && respuesta.datos?.data) {
+        const datosApi = respuesta.datos.data;
+        const token = datosApi.token;
+        const usuario = datosApi.persona;
 
-  if (token && usuario) {
-    localStorage.setItem('auth_token', token);
-    localStorage.setItem('persona_data', JSON.stringify(usuario));
-
-    // Disparar evento para actualizar la barra de navegación
-    window.dispatchEvent(new Event('login'));
-
-    router.push('/dashboard');
-  } else {
-    setError('Respuesta inválida del servidor');
-  }
-} else {
-  setError(respuesta.mensaje || 'Error al iniciar sesión');
-}
-
-    } catch (err) {
-      setError('Error al conectar con el servidor');
+        if (token && usuario) {
+          console.log('. Login exitoso, token recibido:', token);
+          
+          // Los datos ya se guardaron en servidorApi.login
+          // Solo disparar el evento
+          window.dispatchEvent(new Event('login'));
+          
+          // Pequeña espera para asegurar que la cookie se estableció
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          console.log('. Redirigiendo a dashboard...');
+          router.push('/dashboard');
+        } else {
+          setError('Respuesta inválida del servidor (sin token)');
+        }
+      } else {
+        setError(respuesta.mensaje || 'Error al iniciar sesión');
+      }
+    } catch (err: any) {
+      console.error('. Error en login:', err);
+      setError(err.message || 'Error al conectar con el servidor');
     } finally {
       setCargando(false);
     }
   };
 
-  useEffect(() => {
-    if (serviciosAuth.verificarAutenticacion()) {
-      router.replace('/dashboard'); // Redirige si ya hay sesión
-    } else {
-      setVerificandoSesion(false); // Mostrar login
-    }
-  }, [router]);
-
-  if (verificandoSesion) return <div>Cargando...</div>;
+  if (verificandoSesion) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Container maxWidth="sm" sx={{ mt: 8 }}>
@@ -119,29 +130,30 @@ const toggleMostrarConfirmPassword = () => setMostrarConfirmPassword(!mostrarCon
             margin="normal"
           />
 
-  <TextField
-    fullWidth
-    label="Contraseña"
-    type={mostrarPassword ? 'text' : 'password'}
-    {...register('password', {
-      required: 'La contraseña es requerida',
-      minLength: {
-        value: 6,
-        message: 'Mínimo 6 caracteres',
-      },
-    })}
-    error={!!errors.password}
-    helperText={errors.password?.message}
-    InputProps={{
-      endAdornment: (
-        <InputAdornment position="end">
-          <IconButton onClick={toggleMostrarPassword} edge="end">
-            {mostrarPassword ? <VisibilityOff /> : <Visibility />}
-          </IconButton>
-        </InputAdornment>
-      ),
-    }}
-  />
+          <TextField
+            fullWidth
+            label="Contraseña"
+            type={mostrarPassword ? 'text' : 'password'}
+            {...register('password', {
+              required: 'La contraseña es requerida',
+              minLength: {
+                value: 6,
+                message: 'Mínimo 6 caracteres',
+              },
+            })}
+            error={!!errors.password}
+            helperText={errors.password?.message}
+            margin="normal"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton onClick={() => setMostrarPassword(!mostrarPassword)} edge="end">
+                    {mostrarPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
 
           <Button
             type="submit"
