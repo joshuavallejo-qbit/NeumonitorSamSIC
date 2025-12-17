@@ -24,7 +24,7 @@ def obtener_persona_autenticada(request: Request):
 
 # Función para obtener perfil de salud y generar explicación
 async def obtener_informacion_vulnerabilidad(persona_id: str, supabase) -> Dict[str, Any]:
-    """Obtener información de vulnerabilidad del usuario - VERSIÓN MEJORADA"""
+    """Obtener información de vulnerabilidad del usuario - . MEJORADA"""
     try:
         # Obtener perfil de salud
         response = supabase.table("perfil_salud").select("*").eq("persona_id", persona_id).execute()
@@ -153,7 +153,7 @@ async def obtener_informacion_vulnerabilidad(persona_id: str, supabase) -> Dict[
 
 # Función para generar explicación del análisis
 def generar_explicacion_analisis(diagnostico: str, confianza: float, vulnerabilidad_info: Dict[str, Any]) -> Dict[str, str]:
-    """Generar explicación detallada del análisis - VERSIÓN MEJORADA"""
+    """Generar explicación detallada del análisis - . MEJORADA"""
     
     if diagnostico == "NORMAL":
         explicacion_ia = f"""
@@ -224,7 +224,7 @@ async def subir_analisis(
     imagen: UploadFile = File(...),
     comentarios: Optional[str] = None
 ):
-    """Subir radiografía para análisis (vinculado a persona) - VERSIÓN COMPLETAMENTE CORREGIDA"""
+    """Subir radiografía para análisis (vinculado a persona) - . COMPLETAMENTE CORREGIDA"""
     try:
         persona = obtener_persona_autenticada(request)
         persona_id = persona.get("id")

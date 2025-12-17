@@ -1,4 +1,4 @@
-// frontend/src/app/(auth)/login/page.tsx - CORREGIDO
+// frontend/src/app/(auth)/login/page.tsx - .
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -17,7 +17,7 @@ import {
 import { Login as LoginIcon, LockReset } from '@mui/icons-material';
 import { servidorApi } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-import ModalRecuperarPassword from '@/components/ModalRecuperarPassword'; // Asegúrate de crear este componente
+import ModalRecuperarPassword from '@/components/ModalRecuperarPassword';
 import { IconButton, InputAdornment } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 

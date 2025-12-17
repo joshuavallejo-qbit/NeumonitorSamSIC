@@ -29,7 +29,7 @@ clienteApi.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores - CORREGIDO PARA EVITAR BUCLES
+// Interceptor para manejar errores - . PARA EVITAR BUCLES
 clienteApi.interceptors.response.use(
   (response) => response,
   (error) => {

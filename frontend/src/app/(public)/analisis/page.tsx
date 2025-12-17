@@ -1,4 +1,4 @@
-// frontend/src/app/(public)/analisis/page.tsx - Versión pública
+// frontend/src/app/(public)/analisis/page.tsx - . pública
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
