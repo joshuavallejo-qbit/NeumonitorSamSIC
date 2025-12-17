@@ -1,4 +1,5 @@
 # backend/app.py 
+from trayendo_modelo import model as modelo
 from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from tensorflow import keras
@@ -111,21 +112,6 @@ app.include_router(analisisController.router)
 
 
 # CARGA MODELO IA
-
-modelo = None
-try:
-    for ruta in [
-        "modelo_neumonia_MobileNet.keras",
-        "./backend/modelo_neumonia_MobileNet.keras",
-        "../backend/modelo_neumonia_MobileNet.keras",
-    ]:
-        if os.path.exists(ruta):
-            modelo = keras.models.load_model(ruta)
-            print(f"Modelo cargado desde: {ruta}")
-            break
-except Exception as e:
-    print(f"Error cargando modelo: {e}")
-
 
 # ENDPOINTS PÚBLICOS
 
