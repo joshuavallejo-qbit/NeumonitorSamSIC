@@ -113,7 +113,6 @@ def calcular_vulnerabilidad_backend(
         "motivos": motivos,
         "edad_actual": edad
     }
-
 @router.post("/login")
 async def login(request: LoginRequest):
     """Iniciar sesión usando tabla persona"""
@@ -121,25 +120,27 @@ async def login(request: LoginRequest):
         supabase = get_supabase()
         
         # Buscar persona por email
-        response = supabase.table("persona").select("*").eq("email", request.email).single().execute()
-        
-        if hasattr(response, 'error'):
+        response = supabase.table("persona").select("*").eq("email", request.email).execute()
+
+        if hasattr(response, 'error') and response.error:
             logging.error(f"Error buscando usuario: {response.error.message}")
             raise HTTPException(
                 status_code=500,
                 detail="Error interno del servidor"
             )
 
-        if not response.data:
+        if not response.data or len(response.data) == 0:
             # Usuario no existe
             raise HTTPException(
                 status_code=404,
                 detail="Usuario no encontrado, por favor regístrese"
             )
-                
-        persona = response.data
+
+        # Tomar el primer registro
+        persona = response.data[0]
+
         
-        # Verificar contrasenha
+        # Verificar contraseña
         hashed_password = hash_password(request.password)
         if persona.get("contrasenha") != hashed_password:
             raise HTTPException(
@@ -147,18 +148,8 @@ async def login(request: LoginRequest):
                 detail="Credenciales inválidas"
             )
         
-        # Obtener perfil de salud si existe
-        perfil_salud_response = supabase.table("perfil_salud").select("*").eq("persona_id", persona.get("id")).execute()
-        perfil_salud = perfil_salud_response.data[0] if perfil_salud_response.data else None
-        
-        # IMPORTANTE: El token es el ID de la persona (UUID)
+        # Token = ID de persona
         token = persona.get("id")
-        
-        if not token:
-            raise HTTPException(
-                status_code=500,
-                detail="Error interno del servidor"
-            )
         
         return {
             "success": True,
@@ -171,8 +162,7 @@ async def login(request: LoginRequest):
                     "telefono": persona.get("telefono"),
                     "direccion": persona.get("direccion")
                 },
-                "perfil_salud": perfil_salud,
-                "token": token  # Token = ID de persona
+                "token": token
             }
         }
         
@@ -184,6 +174,7 @@ async def login(request: LoginRequest):
             status_code=500,
             detail="Error interno del servidor"
         )
+
 
 @router.post("/registro")
 async def registro(request: RegisterRequest):
@@ -325,24 +316,25 @@ async def recuperar_password(request: RecuperarPasswordRequest):
                 detail="Las contraseñas no coinciden"
             )
         
-        # Buscar persona por email
-        response = supabase.table("persona").select("id, email, nombre_completo").eq("email", request.email).single().execute()
+        # Buscar persona por email sin usar .single()
+        response = supabase.table("persona").select("id, email, nombre_completo").eq("email", request.email).execute()
         
-        if hasattr(response, 'error'):
+        if hasattr(response, 'error') and response.error:
             logging.error(f"Error buscando usuario para recuperación: {response.error.message}")
             raise HTTPException(
                 status_code=500,
                 detail="Error interno del servidor"
             )
 
-        if not response.data:
+        if not response.data or len(response.data) == 0:
+            # Usuario no existe
             raise HTTPException(
                 status_code=404,
                 detail="Usuario no encontrado, por favor regístrese"
             )
 
-                
-        persona = response.data
+        # Tomar el primer registro
+        persona = response.data[0]
         persona_id = persona.get("id")
         
         # Hashear nueva contraseña
@@ -360,7 +352,6 @@ async def recuperar_password(request: RecuperarPasswordRequest):
                 detail=f"Error actualizando contraseña: {update_response.error.message}"
             )
         
-        # Registrar log de recuperación
         logging.info(f"Contraseña recuperada exitosamente para usuario: {request.email}")
         
         return {
