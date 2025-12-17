@@ -19,24 +19,31 @@ from controladores import authController, personaController, analisisController
 app = FastAPI(title="API de Detección de Neumonía")
 
 # Configurar CORS
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://neumonitor2.vercel.app",  #  Vercel
-    "https://neumonitor2.onrender.com", # Render
-    "http://neumonitor2.onrender.com",  # También versión HTTP por si acaso
-]
+# Determinar orígenes dinámicamente
+def get_origins():
+    env = os.getenv("NODE_ENV", "development")
+    
+    if env == "production":
+        return [
+            "https://neumonitor2.vercel.app",
+            "https://neumonitor2.onrender.com",
+        ]
+    else:
+        return [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+        ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=get_origins(),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=3600,
 )
-
 # Importar middleware después de crear la app
 from middleware.auth import AuthMiddleware
 @app.middleware("http")
@@ -58,43 +65,53 @@ async def options_handler():
 # Crear un middleware HTTP personalizado que SI funcione
 @app.middleware("http")
 async def middleware_global(request: Request, call_next):
-    # DEPURACIÓN: Mostrar todas las solicitudes
     print(f"\n{'='*50}")
     print(f"Solicitud: {request.method} {request.url.path}")
-    print(f"Headers: {dict(request.headers)}")
     
-    # Verificar autenticación
-    try:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-            print(f"Token recibido: {token}")
-            
-            # Verificar token
-            import re
-            if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', token):
-                supabase = get_supabase()
-                response = supabase.table("persona").select("*").eq("id", token).single().execute()
+    # Para OPTIONS requests (preflight), responder rápido
+    if request.method == "OPTIONS":
+        response = JSONResponse(content={"message": "OK"})
+    else:
+        # Solo verificar autenticación para métodos no-OPTIONS
+        try:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
+                print(f"Token recibido: {token}")
                 
-                if not hasattr(response, 'error') and response.data:
-                    request.state.persona = response.data
-                    print(f"Usuario autenticado: {response.data.get('email')}")
+                # Verificar formato UUID
+                import re
+                if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', token):
+                    supabase = get_supabase()
+                    response_db = supabase.table("persona").select("*").eq("id", token).single().execute()
+                    
+                    if not hasattr(response_db, 'error') and response_db.data:
+                        request.state.persona = response_db.data
+                        print(f"Usuario autenticado: {response_db.data.get('email')}")
+                    else:
+                        request.state.persona = None
+                        print("Token no válido o usuario no encontrado")
                 else:
                     request.state.persona = None
-                    print("Token válido pero usuario no encontrado")
+                    print("Formato de token incorrecto")
             else:
                 request.state.persona = None
-                print("Token no válido (formato incorrecto)")
-        else:
+                print("No hay token en la solicitud")
+        except Exception as e:
+            print(f"Error en middleware: {e}")
             request.state.persona = None
-            print("No hay token en la solicitud")
-    except Exception as e:
-        print(f"Error en middleware: {e}")
-        request.state.persona = None
+        
+        response = await call_next(request)
     
-    response = await call_next(request)
+    # Headers CORS dinámicos
+    origin = request.headers.get("origin", "")
+    if origin in get_origins():
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+    
     return response
-
 # Incluir routers
 app.include_router(authController.router)
 app.include_router(personaController.router)
