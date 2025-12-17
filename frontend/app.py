@@ -25,7 +25,7 @@ radiografías de tórax y detectar signos de neumonía.
 @st.cache_resource
 def load_model():
     # Asegúrate de que el nombre del archivo coincida exactamente
-    model = tf.keras.models.load_model('modelo_neumonia_MobileNet.keras')
+    model = tf.keras.models.load_model('../backend/modelo_neumonia_MobileNet.keras')
     return model
 
 # Cargamos el modelo y mostramos un mensaje cuando esté listo

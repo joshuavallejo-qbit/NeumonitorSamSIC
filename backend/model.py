@@ -10,9 +10,10 @@ import os
 # Ejemplo: "C:/Users/TuUsuario/Datasets/ChestXRay/train"
 #data_dir = r'C:/Users/Joshua Vallejo/OneDrive/Club de Inteligencia Artificial Politecnico/App Neumonia CIAP/chest_xray/train'
 # ============================
-train_dir = r'./chest_xray/train'
-val_dir = r'./chest_xray/val'
-test_dir = r'./chest_xray/test'
+train_dir = r'../chest_xray/train'
+val_dir = r'../chest_xray/val'
+test_dir = r'../chest_xray/test'
+
 
 batch_size = 32
 img_height = 224   # MobileNetV2 requiere 224x224
@@ -176,4 +177,5 @@ test_ds = tf.keras.utils.image_dataset_from_directory(
 test_loss, test_acc = model.evaluate(test_ds)
 print("\nResultados en TEST:")
 print("Test accuracy:", test_acc)
+
 print("Test loss:", test_loss)
